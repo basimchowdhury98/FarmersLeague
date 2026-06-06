@@ -1,0 +1,20 @@
+<main class="shell">
+  <section class="hero">
+    <p class="eyebrow">World Cup friends league</p>
+    <h1>FarmersLeague</h1>
+    <p class="intro" data-cy="api-greeting">{{ hello() }}</p>
+  </section>
+
+  <section class="card" aria-labelledby="matches-heading">
+    <h2 id="matches-heading">Mocked Match Feed</h2>
+
+    @for (match of matches(); track match.id) {
+      <article class="match" data-cy="match-card">
+        <p class="league" data-cy="match-league">{{ match.league }}</p>
+        <h3 data-cy="match-teams">{{ match.homeTeam }} vs {{ match.awayTeam }}</h3>
+      </article>
+    } @empty {
+      <p data-cy="matches-loading">Loading mocked matches...</p>
+    }
+  </section>
+</main>

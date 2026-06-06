@@ -1,0 +1,11 @@
+**/.git
+**/.vs
+**/.vscode
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/.angular
+tests/e2e/node_modules
+tests/e2e/videos
+tests/e2e/screenshots

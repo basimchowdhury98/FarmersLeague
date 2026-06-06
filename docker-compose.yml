@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      context: .
+      target: test
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mock-football-api
+
+  mock-football-api:
+    build:
+      context: .
+      target: mock-runtime
+    ports:
+      - "5081:8080"

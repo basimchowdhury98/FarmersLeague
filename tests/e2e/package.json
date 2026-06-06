@@ -1,0 +1,12 @@
+{
+  "name": "farmersleague-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "cypress:open": "cypress open",
+    "test": "cypress run"
+  },
+  "devDependencies": {
+    "cypress": "^15.8.0"
+  }
+}
