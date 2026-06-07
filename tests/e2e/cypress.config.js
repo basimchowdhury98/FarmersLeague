@@ -6,6 +6,6 @@ module.exports = defineConfig({
     env: {
       mockApiUrl: 'http://localhost:5081'
     },
-    supportFile: false
+    supportFile: 'cypress/support/commands.js'
   }
 });

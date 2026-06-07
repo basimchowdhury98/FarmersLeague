@@ -1,4 +1,9 @@
 describe('FarmersLeague shell', () => {
+  const alicePasskey = '11111111-1111-1111-1111-111111111111';
+
+  // GIVEN the app and mock football API are running
+  // WHEN Alice opens the FarmersLeague shell using her valid passkey URL
+  // THEN the UI shows data loaded through the API and mock football API
   it('loads UI data through the API and mock football API', () => {
     cy.request(`${Cypress.env('mockApiUrl')}/v3/fixtures?league=1&season=2026`)
       .its('body.response.0.teams.home.name')
@@ -7,14 +12,14 @@ describe('FarmersLeague shell', () => {
     cy.intercept('GET', '/api/hello').as('helloApi');
     cy.intercept('GET', '/api/matches').as('matchesApi');
 
-    cy.visit('/');
+    cy.visit(`/${alicePasskey}`);
 
     cy.wait('@helloApi').its('response.statusCode').should('equal', 200);
     cy.wait('@matchesApi').its('response.body.0.homeTeam').should('equal', 'Canada');
 
     cy.contains('h1', 'FarmersLeague').should('be.visible');
-    cy.get('[data-cy="api-greeting"]').should('contain.text', 'Hello from FarmersLeague API');
-    cy.get('[data-cy="match-league"]').should('contain.text', 'FIFA World Cup');
-    cy.get('[data-cy="match-teams"]').should('contain.text', 'Canada vs Mexico');
+    cy.testGet('api-greeting').should('contain.text', 'Hello from FarmersLeague API');
+    cy.testGet('match-league').should('contain.text', 'FIFA World Cup');
+    cy.testGet('match-teams').should('contain.text', 'Canada vs Mexico');
   });
 });

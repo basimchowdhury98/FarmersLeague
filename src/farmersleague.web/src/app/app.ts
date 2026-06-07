@@ -11,6 +11,12 @@ type MatchResponse = {
   awayTeam: string;
   league: string;
   date: string;
+  lineups: LineupResponse[];
+};
+
+type LineupResponse = {
+  teamName: string;
+  starters: string[];
 };
 
 @Component({
@@ -22,6 +28,7 @@ type MatchResponse = {
 export class App {
   protected readonly hello = signal('Loading API greeting...');
   protected readonly matches = signal<MatchResponse[]>([]);
+  protected readonly selectedMatch = signal<MatchResponse | null>(null);
   protected readonly hasAccess = signal(false);
   protected readonly isCheckingAccess = signal(true);
 
@@ -54,5 +61,9 @@ export class App {
     http.get<MatchResponse[]>('/api/matches').subscribe((response) => {
       this.matches.set(response);
     });
+  }
+
+  protected selectMatch(match: MatchResponse) {
+    this.selectedMatch.set(match);
   }
 }

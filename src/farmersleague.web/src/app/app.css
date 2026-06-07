@@ -41,13 +41,40 @@ h1 {
 }
 
 .match {
+  display: block;
+  width: 100%;
   padding: 1rem;
+  border: 0;
   border-radius: 1rem;
   background: #fff8e6;
   color: #10291f;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
 }
 
-.match h3 {
-  margin: 0;
+.match-teams {
+  display: block;
+  margin-top: 0.5rem;
   font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.lineups {
+  display: grid;
+  gap: 1rem;
+}
+
+.lineup {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 10%);
+}
+
+.lineup h2 {
+  margin-top: 0;
+}
+
+.lineup li {
+  margin: 0.35rem 0;
 }

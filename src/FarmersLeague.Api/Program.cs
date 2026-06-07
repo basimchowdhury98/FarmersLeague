@@ -45,12 +45,7 @@ app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, Cancella
         "/v3/fixtures?league=1&season=2026",
         cancellationToken);
 
-    var matches = fixtures?.Response.Select(fixture => new MatchResponse(
-        fixture.Fixture.Id,
-        fixture.Teams.Home.Name,
-        fixture.Teams.Away.Name,
-        fixture.League.Name,
-        fixture.Fixture.Date)) ?? [];
+    var matches = fixtures?.Response.Select(ToMatchResponse) ?? [];
 
     return Results.Ok(matches);
 });
@@ -78,17 +73,31 @@ static async Task SeedLocalUsers(IServiceProvider services)
 
 static string UserPasskeyCacheKey(string passkey) => $"users:passkeys:{passkey}";
 
+static MatchResponse ToMatchResponse(ApiFootballFixtureItem fixture) => new(
+    fixture.Fixture.Id,
+    fixture.Teams.Home.Name,
+    fixture.Teams.Away.Name,
+    fixture.League.Name,
+    fixture.Fixture.Date,
+    fixture.Lineups.Select(ToLineupResponse).ToArray());
+
+static LineupResponse ToLineupResponse(ApiFootballLineup lineup) => new(
+    lineup.Team.Name,
+    lineup.StartXI.Select(starter => starter.Player.Name).ToArray());
+
 record HelloResponse(string Message);
 
 record AccessResponse(bool HasAccess, string? UserName);
 
 record TestUser(string Name, string Passkey);
 
-record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date);
+record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups);
+
+record LineupResponse(string TeamName, IReadOnlyList<string> Starters);
 
 record ApiFootballFixturesResponse(IReadOnlyList<ApiFootballFixtureItem> Response);
 
-record ApiFootballFixtureItem(ApiFootballFixture Fixture, ApiFootballLeague League, ApiFootballTeams Teams);
+record ApiFootballFixtureItem(ApiFootballFixture Fixture, ApiFootballLeague League, ApiFootballTeams Teams, IReadOnlyList<ApiFootballLineup> Lineups);
 
 record ApiFootballFixture(int Id, DateTimeOffset Date);
 
@@ -97,3 +106,9 @@ record ApiFootballLeague(string Name);
 record ApiFootballTeams(ApiFootballTeam Home, ApiFootballTeam Away);
 
 record ApiFootballTeam(string Name);
+
+record ApiFootballLineup(ApiFootballTeam Team, IReadOnlyList<ApiFootballStarter> StartXI);
+
+record ApiFootballStarter(ApiFootballPlayer Player);
+
+record ApiFootballPlayer(string Name);
