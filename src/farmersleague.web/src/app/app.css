@@ -104,26 +104,65 @@ h3 {
   background: rgb(13 34 25 / 92%);
 }
 
-.turn-card div,
-.current-turn {
+.turn-card > div,
+.draft-turn-queue-wrap {
   display: grid;
   gap: 0.2rem;
   margin: 0;
 }
 
-.turn-card strong,
-.current-turn {
+.turn-card strong {
   color: #fff;
   font-size: 1rem;
   font-weight: 900;
 }
 
-.current-turn {
+.draft-turn-queue-wrap {
   grid-column: 1 / -1;
+  position: relative;
+  overflow: hidden;
   padding: 0.75rem;
   border-radius: 0.9rem;
+  background: rgb(255 255 255 / 8%);
+}
+
+.draft-turn-queue-wrap::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 35%;
+  background: linear-gradient(90deg, rgb(13 34 25 / 0%), rgb(13 34 25 / 96%));
+  content: "";
+  pointer-events: none;
+}
+
+.draft-turn-queue {
+  display: flex;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  transition: transform 180ms ease;
+}
+
+.draft-turn-queue-item {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 999px;
+  background: rgb(247 241 223 / 12%);
+  color: rgb(247 241 223 / 82%);
+  font-weight: 900;
+  text-align: center;
+  transition: opacity 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.draft-turn-queue-item.active-turn {
   background: #b8e986;
   color: #07140f;
+  transform: scale(1.03);
 }
 
 .draft-error {
@@ -279,10 +318,6 @@ h3 {
 
   .turn-card {
     grid-template-columns: repeat(3, 1fr);
-  }
-
-  .current-turn {
-    grid-column: auto;
   }
 
   .draft-summary {

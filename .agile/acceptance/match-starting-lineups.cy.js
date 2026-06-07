@@ -1,6 +1,7 @@
 /**
- * As a logged-in FarmersLeague user, I want to open a match draft page and take turns drafting 3 starters per user,
- * so that every league user can build a small squad from the match’s starting lineups without choosing already-drafted players.
+ * As a logged-in FarmersLeague user, I want to open a match draft page, see the remaining draft turns as a horizontal queue,
+ * and take turns drafting 3 starters per user, so that every league user can understand who picks now and next while building
+ * a small squad from the match’s starting lineups without choosing already-drafted players.
  */
 describe('Match draft page', () => {
   const alicePasskey = '11111111-1111-1111-1111-111111111111';
@@ -57,6 +58,13 @@ describe('Match draft page', () => {
       .should('equal', 200);
   };
 
+  const assertTurnQueue = (turns) => {
+    cy.testGet('draft-turn-queue').find('[data-test="draft-turn-queue-item"]').should('have.length', turns.length);
+    turns.forEach((turn, index) => {
+      cy.testGet('draft-turn-queue').find('[data-test="draft-turn-queue-item"]').eq(index).should('contain.text', turn);
+    });
+  };
+
   beforeEach(() => {
     cy.request('DELETE', '/api/testing/drafts').its('status').should('equal', 204);
   });
@@ -95,22 +103,37 @@ describe('Match draft page', () => {
     });
   });
 
-  // GIVEN Alice opens the Canada vs Mexico draft page for a fresh draft
+  // GIVEN Alice opens the Canada vs Mexico draft page for a fresh draft with Alice and Bob drafting 3 players each
   // WHEN the draft loads
-  // THEN she sees a randomized draft order containing all seeded users and the current user whose turn it is
-  it('shows a draft order with all seeded users and the current turn', () => {
+  // THEN she sees a horizontal remaining-turn queue containing 6 turns in draft order: Alice, Bob, Alice, Bob, Alice, Bob
+  it('shows a horizontal remaining-turn queue for every uncompleted pick', () => {
+    setAliceBobDraft();
+
     cy.visit(`/${alicePasskey}/matches/${matchId}/draft`);
 
     cy.testGet('draft-order').find('[data-test="draft-order-user"]').should('have.length', 2);
     cy.testGet('draft-order').should('contain.text', 'Alice').and('contain.text', 'Bob');
-    cy.testGet('current-turn').should('be.visible').and('contain.text', 'Current turn:');
-    cy.testGet('current-turn').invoke('text').should('match', /Alice|Bob/);
+    assertTurnQueue(['Alice', 'Bob', 'Alice', 'Bob', 'Alice', 'Bob']);
+    cy.testGet('current-turn').should('not.exist');
+  });
+
+  // GIVEN Alice opens the Canada vs Mexico draft page and Alice has already drafted once
+  // WHEN the draft loads
+  // THEN she sees a remaining-turn queue containing only the 5 remaining turns: Bob, Alice, Bob, Alice, Bob
+  it('shows only remaining turns after completed picks are removed from the queue', () => {
+    setAliceBobDraft([{ userName: 'Alice', playerName: 'Dayne St. Clair' }]);
+
+    cy.visit(`/${alicePasskey}/matches/${matchId}/draft`);
+
+    assertTurnQueue(['Bob', 'Alice', 'Bob', 'Alice', 'Bob']);
+    cy.testGet('draft-picks-Alice').should('contain.text', 'Dayne St. Clair');
+    cy.testGet('current-turn').should('not.exist');
   });
 
   // GIVEN it is Alice’s turn on the Canada vs Mexico draft page
   // WHEN Alice drafts an available player
-  // THEN that player is assigned to Alice, becomes unavailable to other users, and the turn advances to the next user
-  it('assigns Alice an available player, makes the player unavailable, and advances the turn', () => {
+  // THEN that player is assigned to Alice, becomes unavailable to other users, and the remaining-turn queue advances to Bob without separate current-turn text
+  it('assigns Alice an available player, makes the player unavailable, and advances the turn queue', () => {
     setAliceBobDraft();
 
     cy.visit(`/${alicePasskey}/matches/${matchId}/draft`);
@@ -121,7 +144,8 @@ describe('Match draft page', () => {
       .should('contain.text', 'Drafted by Alice')
       .find('button')
       .should('be.disabled');
-    cy.testGet('current-turn').should('contain.text', 'Bob');
+    assertTurnQueue(['Bob', 'Alice', 'Bob', 'Alice', 'Bob']);
+    cy.testGet('current-turn').should('not.exist');
 
     cy.visit(`/${bobPasskey}/matches/${matchId}/draft`);
     draftPlayerRow('Dayne St. Clair')
@@ -132,7 +156,7 @@ describe('Match draft page', () => {
 
   // GIVEN Alice and Bob both have the Canada vs Mexico draft page open for a fresh draft
   // WHEN Alice drafts an available player on her turn
-  // THEN Bob’s already-open draft page updates without reload to show the player drafted by Alice, Bob as the current turn, and the drafted player disabled
+  // THEN Bob’s already-open draft page updates without reload to show the player drafted by Alice, Bob as the first remaining turn, and the drafted player disabled
   it('live updates Bob’s open draft page after Alice drafts a player', () => {
     setAliceBobDraft();
 
@@ -146,17 +170,18 @@ describe('Match draft page', () => {
       .should('contain.text', 'Drafted by Alice')
       .find('button')
       .should('be.disabled');
-    cy.testGet('current-turn').should('contain.text', 'Bob');
+    assertTurnQueue(['Bob', 'Alice', 'Bob', 'Alice', 'Bob']);
+    cy.testGet('current-turn').should('not.exist');
   });
 
   // GIVEN Alice and Bob both have the Canada vs Mexico draft page open and it is Bob’s turn
   // WHEN Bob drafts an available player
-  // THEN Alice’s already-open draft page updates without reload to show the player drafted by Bob, Alice as the current turn, and the drafted player disabled
+  // THEN Alice’s already-open draft page updates without reload to show the player drafted by Bob, Alice as the first remaining turn, and the drafted player disabled
   it('live updates Alice’s open draft page after Bob drafts a player', () => {
     setAliceBobDraft([{ userName: 'Alice', playerName: 'Dayne St. Clair' }]);
 
     cy.visit(`/${alicePasskey}/matches/${matchId}/draft`);
-    cy.testGet('current-turn').should('contain.text', 'Bob');
+    assertTurnQueue(['Bob', 'Alice', 'Bob', 'Alice', 'Bob']);
     cy.testGet('draft-picks-Bob').should('not.contain.text', 'Raúl Rangel');
 
     draftAs(bobPasskey, 'Raúl Rangel');
@@ -166,7 +191,8 @@ describe('Match draft page', () => {
       .should('contain.text', 'Drafted by Bob')
       .find('button')
       .should('be.disabled');
-    cy.testGet('current-turn').should('contain.text', 'Alice');
+    assertTurnQueue(['Alice', 'Bob', 'Alice', 'Bob']);
+    cy.testGet('current-turn').should('not.exist');
   });
 
   // GIVEN Alice and Bob are drafting the Canada vs Mexico starters
@@ -191,7 +217,7 @@ describe('Match draft page', () => {
 
   // GIVEN every user has drafted 3 players
   // WHEN Alice views the draft page
-  // THEN she sees a completed draft summary showing each user’s drafted players
+  // THEN she sees a completed draft summary showing each user’s drafted players and no remaining-turn queue
   it('shows a completed draft summary after every user has drafted 3 players', () => {
     setAliceBobDraft([
       { userName: 'Alice', playerName: 'Dayne St. Clair' },
@@ -205,6 +231,7 @@ describe('Match draft page', () => {
     cy.visit(`/${alicePasskey}/matches/${matchId}/draft`);
 
     cy.testGet('draft-status').should('contain.text', 'Draft complete');
+    cy.testGet('draft-turn-queue').should('not.exist');
     cy.testGet('draft-summary').within(() => {
       cy.testGet('draft-picks-Alice').should('contain.text', 'Dayne St. Clair').and('contain.text', 'Alistair Johnston').and('contain.text', 'Kamal Miller');
       cy.testGet('draft-picks-Bob').should('contain.text', 'Raúl Rangel').and('contain.text', 'Israel Reyes').and('contain.text', 'César Montes');
@@ -213,7 +240,7 @@ describe('Match draft page', () => {
 
   // GIVEN Alice and Bob both have the Canada vs Mexico draft page open with each user one pick away from completing the draft
   // WHEN the final player is drafted
-  // THEN both already-open draft pages update without reload to show Draft complete and the completed draft summary for both users
+  // THEN both already-open draft pages update without reload to show Draft complete, hide the remaining-turn queue, and show the completed draft summary for both users
   it('live updates an open draft page when the final pick completes the draft', () => {
     setAliceBobDraft([
       { userName: 'Alice', playerName: 'Dayne St. Clair' },
@@ -230,6 +257,7 @@ describe('Match draft page', () => {
 
     cy.testGet('draft-status').should('contain.text', 'Draft complete');
     cy.testGet('current-turn').should('not.exist');
+    cy.testGet('draft-turn-queue').should('not.exist');
     cy.testGet('draft-summary').within(() => {
       cy.testGet('draft-picks-Alice').should('contain.text', 'Dayne St. Clair').and('contain.text', 'Alistair Johnston').and('contain.text', 'Kamal Miller');
       cy.testGet('draft-picks-Bob').should('contain.text', 'Raúl Rangel').and('contain.text', 'Israel Reyes').and('contain.text', 'César Montes');
@@ -242,7 +270,7 @@ describe('Match draft page', () => {
 
   // GIVEN players have already been drafted for Canada vs Mexico
   // WHEN Alice refreshes or reopens the draft page using her passkey URL
-  // THEN the draft order, drafted players, unavailable players, and current/completed status are restored from Redis
+  // THEN the draft order, drafted players, unavailable players, remaining-turn queue, and current/completed status are restored from Redis
   it('restores draft state from Redis after reopening the draft page', () => {
     setAliceBobDraft([
       { userName: 'Alice', playerName: 'Dayne St. Clair' },
@@ -257,11 +285,12 @@ describe('Match draft page', () => {
     cy.testGet('draft-picks-Alice').should('contain.text', 'Dayne St. Clair');
     cy.testGet('draft-picks-Bob').should('contain.text', 'Raúl Rangel');
     draftPlayerRow('Dayne St. Clair').find('button').should('be.disabled');
-    cy.testGet('current-turn').should('contain.text', 'Alice');
+    assertTurnQueue(['Alice', 'Bob', 'Alice', 'Bob']);
+    cy.testGet('current-turn').should('not.exist');
     cy.testGet('draft-status').should('not.contain.text', 'Draft complete');
   });
 
-  // GIVEN Bob opens the Canada vs Mexico draft page and it is Alice’s turn
+  // GIVEN Bob opens the Canada vs Mexico draft page and the first remaining turn belongs to Alice
   // WHEN Bob views available players
   // THEN every available player’s Draft button is disabled so Bob cannot draft out of turn
   it('disables draft buttons when it is not the user’s turn', () => {
@@ -269,7 +298,8 @@ describe('Match draft page', () => {
 
     cy.visit(`/${bobPasskey}/matches/${matchId}/draft`);
 
-    cy.testGet('current-turn').should('contain.text', 'Alice');
+    assertTurnQueue(['Alice', 'Bob', 'Alice', 'Bob', 'Alice', 'Bob']);
+    cy.testGet('current-turn').should('not.exist');
     cy.get('[data-test="draft-player"] button').should('have.length', 22).and('be.disabled');
     cy.testGet('draft-picks-Bob').should('not.contain.text', 'Dayne St. Clair');
     draftPlayerRow('Dayne St. Clair').should('not.contain.text', 'Drafted by Bob');
@@ -305,12 +335,13 @@ describe('Match draft page', () => {
 
   // GIVEN a visitor is not logged in with a valid passkey
   // WHEN they attempt to open the match draft page
-  // THEN they see the no access page and cannot see draft content
+  // THEN they see the no access page and cannot see draft content or the remaining-turn queue
   it('does not show draft content to visitors without a valid passkey', () => {
     cy.visit(`/99999999-9999-9999-9999-999999999999/matches/${matchId}/draft`);
 
     cy.testGet('no-access').should('be.visible').and('contain.text', 'No access');
     cy.testGet('draft-page').should('not.exist');
+    cy.testGet('draft-turn-queue').should('not.exist');
     cy.testGet('draft-lineup-Canada').should('not.exist');
     cy.testGet('draft-lineup-Mexico').should('not.exist');
   });

@@ -50,8 +50,23 @@
           <span class="muted-label">Your picks</span>
           <strong>{{ userPickCount() }}/{{ maxPicksPerUser }}</strong>
         </div>
-        @if (!draftState.isComplete) {
-          <p class="current-turn" data-test="current-turn">Current turn: {{ draftState.currentTurn }}</p>
+        @let draftTurns = remainingTurns(draftState);
+        @if (draftTurns.length > 0) {
+          <div class="draft-turn-queue-wrap" data-test="draft-turn-queue" aria-label="Remaining draft turns">
+            <span class="muted-label">Remaining turns</span>
+            <ol class="draft-turn-queue">
+              @for (draftTurn of draftTurns; track $index) {
+                <li
+                  class="draft-turn-queue-item"
+                  data-test="draft-turn-queue-item"
+                  [class.active-turn]="$first"
+                  [style.opacity]="turnQueueItemOpacity($index)"
+                >
+                  {{ draftTurn }}
+                </li>
+              }
+            </ol>
+          </div>
         }
       </section>
 

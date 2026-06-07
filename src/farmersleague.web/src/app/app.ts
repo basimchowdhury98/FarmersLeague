@@ -183,6 +183,21 @@ export class App {
     return this.picksFor(this.userName()).length;
   }
 
+  protected remainingTurns(draft: DraftResponse) {
+    const totalTurns = draft.draftOrder.length * maxPicksPerUser;
+    const remainingTurnCount = Math.max(totalTurns - draft.picks.length, 0);
+
+    if (draft.isComplete || remainingTurnCount === 0 || draft.draftOrder.length === 0) {
+      return [];
+    }
+
+    return Array.from({ length: remainingTurnCount }, (_, index) => draft.draftOrder[(draft.picks.length + index) % draft.draftOrder.length]);
+  }
+
+  protected turnQueueItemOpacity(index: number) {
+    return Math.max(1 - index * 0.14, 0.32).toString();
+  }
+
   protected isDraftButtonDisabled(playerName: string) {
     const draft = this.draft();
 
@@ -191,7 +206,7 @@ export class App {
       draft.isComplete ||
       draft.currentTurn !== this.userName() ||
       this.draftedBy(playerName) !== null ||
-      this.picksFor(this.userName()).length >= maxPicksPerUser
+      this.userPickCount() >= maxPicksPerUser
     );
   }
 
