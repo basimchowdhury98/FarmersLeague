@@ -59,31 +59,18 @@
         <p class="draft-error" data-test="draft-error">{{ draftError() }}</p>
       }
 
+      @if (draftLiveError()) {
+        <p class="draft-error" data-test="draft-live-error">{{ draftLiveError() }}</p>
+      }
+
       <section class="concept split-match" aria-label="Split match field">
         <div class="mega-pitch">
           @for (lineup of draftState.match.lineups; track lineup.teamName) {
             <article class="lineup split-team" [attr.data-test]="'draft-lineup-' + lineup.teamName">
               <h2>{{ lineup.teamName }} Starting 11 <span>{{ lineup.formation }}</span></h2>
-              @if (hasFormationGrid(lineup)) {
-                @for (row of formationRows(lineup, lineup.teamName === draftState.match.awayTeam); track $index) {
-                  <div class="formation-row compact-row">
-                    @for (starter of row; track starter.name) {
-                      <div class="draft-player player-slot compact" data-test="draft-player">
-                        <button type="button" [disabled]="isDraftButtonDisabled(starter.name)" (click)="draftPlayer(starter.name)">
-                          <span>{{ starter.name }}</span>
-                          @if (draftedBy(starter.name); as manager) {
-                            <small>Drafted by {{ manager }}</small>
-                          } @else {
-                            <small>Draft</small>
-                          }
-                        </button>
-                      </div>
-                    }
-                  </div>
-                }
-              } @else {
-                <div class="fallback-starters">
-                  @for (starter of lineup.starters; track starter.name) {
+              @for (row of displayedLineupRows(lineup, lineup.teamName === draftState.match.awayTeam); track $index) {
+                <div [class]="hasFormationGrid(lineup) ? 'formation-row compact-row' : 'fallback-starters'">
+                  @for (starter of row; track starter.name) {
                     <div class="draft-player player-slot compact" data-test="draft-player">
                       <button type="button" [disabled]="isDraftButtonDisabled(starter.name)" (click)="draftPlayer(starter.name)">
                         <span>{{ starter.name }}</span>

@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
 
@@ -7,7 +10,7 @@ const int MaxPicksPerUser = 3;
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
-    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    options.SerializerOptions.PropertyNamingPolicy = AppJson.Options.PropertyNamingPolicy;
 });
 
 builder.Services.AddHttpClient("FootballApi", client =>
@@ -21,6 +24,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
     options.InstanceName = "FarmersLeague:";
 });
+builder.Services.AddSingleton<LiveDraftConnections>();
 
 var app = builder.Build();
 
@@ -28,6 +32,7 @@ await SeedLocalUsers(app.Services);
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseWebSockets();
 
 app.MapGet("/api/hello", () => new HelloResponse("Hello from FarmersLeague API"));
 
@@ -53,44 +58,85 @@ app.MapGet("/api/drafts/{matchId:int}", async (int matchId, IHttpClientFactory h
     return Results.Ok(ToDraftResponse(match, draft));
 });
 
-app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext context, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var userName = await cache.GetStringAsync(UserPasskeyCacheKey(request.Passkey), cancellationToken);
-    if (userName is null)
+    if (!context.WebSockets.IsWebSocketRequest)
     {
-        return Results.NotFound(new DraftPickErrorResponse("No access"));
+        return Results.BadRequest(new DraftPickErrorResponse("Live draft updates require a WebSocket connection"));
     }
 
-    var match = await GetMatch(matchId, httpClientFactory, cancellationToken);
-    if (match is null)
+    var draftContext = await GetDraftContext(
+        context.Request.Query["passkey"].ToString(),
+        matchId,
+        httpClientFactory,
+        cache,
+        cancellationToken);
+    if (draftContext.Error is not null)
     {
-        return Results.NotFound(new DraftPickErrorResponse("Match not found"));
+        return draftContext.Error;
     }
+    var match = draftContext.Match!;
+
+    using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    liveDraftConnections.Add(matchId, socket);
 
     var draft = await GetOrCreateDraft(matchId, cache, cancellationToken);
-    var draftResponse = ToDraftResponse(match, draft);
+    await liveDraftConnections.Send(socket, ToDraftResponse(match, draft), cancellationToken);
 
-    if (draftResponse.IsComplete)
+    var buffer = new byte[1024];
+    try
+    {
+        while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+        {
+            var message = await socket.ReceiveAsync(buffer, cancellationToken);
+            if (message.MessageType == WebSocketMessageType.Close)
+            {
+                break;
+            }
+        }
+    }
+    finally
+    {
+        liveDraftConnections.Remove(matchId, socket);
+    }
+
+    return Results.Empty;
+});
+
+app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+{
+    var draftContext = await GetDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
+    if (draftContext.Error is not null)
+    {
+        return draftContext.Error;
+    }
+    var match = draftContext.Match!;
+    var userName = draftContext.UserName!;
+
+    var draft = await GetOrCreateDraft(matchId, cache, cancellationToken);
+
+    if (IsDraftComplete(draft))
     {
         return Results.BadRequest(new DraftPickErrorResponse("Draft complete"));
     }
 
-    if (!string.Equals(draftResponse.CurrentTurn, userName, StringComparison.Ordinal))
+    var currentTurn = GetCurrentTurn(draft);
+    if (!string.Equals(currentTurn, userName, StringComparison.Ordinal))
     {
-        return Results.BadRequest(new DraftPickErrorResponse($"Wait for {draftResponse.CurrentTurn}’s turn"));
+        return Results.BadRequest(new DraftPickErrorResponse($"Wait for {currentTurn}’s turn"));
     }
 
-    if (!match.Lineups.SelectMany(lineup => lineup.Starters).Any(starter => string.Equals(starter.Name, request.PlayerName, StringComparison.Ordinal)))
+    if (!HasPlayerInMatch(match, request.PlayerName))
     {
         return Results.BadRequest(new DraftPickErrorResponse("Player is not available in this match"));
     }
 
-    if (draft.Picks.Any(pick => string.Equals(pick.PlayerName, request.PlayerName, StringComparison.Ordinal)))
+    if (IsPlayerDrafted(draft, request.PlayerName))
     {
         return Results.BadRequest(new DraftPickErrorResponse("Player is already drafted"));
     }
 
-    if (draft.Picks.Count(pick => string.Equals(pick.UserName, userName, StringComparison.Ordinal)) >= MaxPicksPerUser)
+    if (PickCountFor(draft, userName) >= MaxPicksPerUser)
     {
         return Results.BadRequest(new DraftPickErrorResponse($"You already drafted {MaxPicksPerUser} players"));
     }
@@ -101,8 +147,10 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     };
 
     await SaveDraft(matchId, updatedDraft, cache, cancellationToken);
+    var updatedResponse = ToDraftResponse(match, updatedDraft);
+    await liveDraftConnections.Broadcast(matchId, updatedResponse, cancellationToken);
 
-    return Results.Ok(ToDraftResponse(match, updatedDraft));
+    return Results.Ok(updatedResponse);
 });
 
 app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
@@ -162,12 +210,29 @@ static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpC
     return matches.FirstOrDefault(match => match.Id == matchId);
 }
 
+static async Task<DraftContextResult> GetDraftContext(string passkey, int matchId, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken)
+{
+    var userName = await cache.GetStringAsync(UserPasskeyCacheKey(passkey), cancellationToken);
+    if (userName is null)
+    {
+        return new DraftContextResult(null, null, Results.NotFound(new DraftPickErrorResponse("No access")));
+    }
+
+    var match = await GetMatch(matchId, httpClientFactory, cancellationToken);
+    if (match is null)
+    {
+        return new DraftContextResult(userName, null, Results.NotFound(new DraftPickErrorResponse("Match not found")));
+    }
+
+    return new DraftContextResult(userName, match, null);
+}
+
 static async Task<DraftState> GetOrCreateDraft(int matchId, IDistributedCache cache, CancellationToken cancellationToken)
 {
     var cachedDraft = await cache.GetStringAsync(DraftCacheKey(matchId), cancellationToken);
     if (cachedDraft is not null)
     {
-        return JsonSerializer.Deserialize<DraftState>(cachedDraft, JsonOptions()) ?? NewDraftState();
+        return JsonSerializer.Deserialize<DraftState>(cachedDraft, AppJson.Options) ?? NewDraftState();
     }
 
     var draft = NewDraftState();
@@ -184,23 +249,33 @@ static DraftState NewDraftState()
 }
 
 static Task SaveDraft(int matchId, DraftState draft, IDistributedCache cache, CancellationToken cancellationToken) =>
-    cache.SetStringAsync(DraftCacheKey(matchId), JsonSerializer.Serialize(draft, JsonOptions()), cancellationToken);
+    cache.SetStringAsync(DraftCacheKey(matchId), JsonSerializer.Serialize(draft, AppJson.Options), cancellationToken);
 
 static DraftResponse ToDraftResponse(MatchResponse match, DraftState draft)
 {
-    var maxPicks = draft.DraftOrder.Count * MaxPicksPerUser;
-    var isComplete = draft.Picks.Count >= maxPicks;
+    var isComplete = IsDraftComplete(draft);
     var currentTurn = isComplete ? null : GetCurrentTurn(draft);
 
     return new DraftResponse(match, draft.DraftOrder, draft.Picks, currentTurn, isComplete);
 }
+
+static bool IsDraftComplete(DraftState draft) => draft.Picks.Count >= draft.DraftOrder.Count * MaxPicksPerUser;
+
+static bool HasPlayerInMatch(MatchResponse match, string playerName) =>
+    match.Lineups.SelectMany(lineup => lineup.Starters).Any(starter => string.Equals(starter.Name, playerName, StringComparison.Ordinal));
+
+static bool IsPlayerDrafted(DraftState draft, string playerName) =>
+    draft.Picks.Any(pick => string.Equals(pick.PlayerName, playerName, StringComparison.Ordinal));
+
+static int PickCountFor(DraftState draft, string userName) =>
+    draft.Picks.Count(pick => string.Equals(pick.UserName, userName, StringComparison.Ordinal));
 
 static string? GetCurrentTurn(DraftState draft)
 {
     for (var pickOffset = 0; pickOffset < draft.DraftOrder.Count; pickOffset++)
     {
         var userName = draft.DraftOrder[(draft.Picks.Count + pickOffset) % draft.DraftOrder.Count];
-        if (draft.Picks.Count(pick => string.Equals(pick.UserName, userName, StringComparison.Ordinal)) < MaxPicksPerUser)
+        if (PickCountFor(draft, userName) < MaxPicksPerUser)
         {
             return userName;
         }
@@ -248,8 +323,6 @@ static (int? Row, int? Column) ParseGrid(string? grid)
         : (null, null);
 }
 
-static JsonSerializerOptions JsonOptions() => new(JsonSerializerDefaults.Web);
-
 static TestUser[] SeededUsers() =>
 [
     new("Alice", "11111111-1111-1111-1111-111111111111"),
@@ -269,6 +342,8 @@ record DraftPick(string UserName, string PlayerName);
 record DraftPickRequest(string Passkey, string PlayerName);
 
 record DraftPickErrorResponse(string Message);
+
+record DraftContextResult(string? UserName, MatchResponse? Match, IResult? Error);
 
 record DraftResponse(MatchResponse Match, IReadOnlyList<string> DraftOrder, IReadOnlyList<DraftPick> Picks, string? CurrentTurn, bool IsComplete);
 
@@ -295,3 +370,51 @@ record ApiFootballLineup(ApiFootballTeam Team, string Formation, IReadOnlyList<A
 record ApiFootballStarter(ApiFootballPlayer Player);
 
 record ApiFootballPlayer(string Name, int? Number, string? Pos, string? Grid);
+
+class LiveDraftConnections
+{
+    private readonly ConcurrentDictionary<int, ConcurrentDictionary<WebSocket, byte>> socketsByMatch = [];
+
+    public void Add(int matchId, WebSocket socket)
+    {
+        var sockets = socketsByMatch.GetOrAdd(matchId, _ => []);
+        sockets.TryAdd(socket, 0);
+    }
+
+    public void Remove(int matchId, WebSocket socket)
+    {
+        if (socketsByMatch.TryGetValue(matchId, out var sockets))
+        {
+            sockets.TryRemove(socket, out _);
+        }
+    }
+
+    public async Task Broadcast(int matchId, DraftResponse draft, CancellationToken cancellationToken)
+    {
+        if (!socketsByMatch.TryGetValue(matchId, out var sockets))
+        {
+            return;
+        }
+
+        foreach (var socket in sockets.Keys)
+        {
+            await Send(socket, draft, cancellationToken);
+        }
+    }
+
+    public async Task Send(WebSocket socket, DraftResponse draft, CancellationToken cancellationToken)
+    {
+        if (socket.State != WebSocketState.Open)
+        {
+            return;
+        }
+
+        var payload = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(draft, AppJson.Options));
+        await socket.SendAsync(payload, WebSocketMessageType.Text, true, cancellationToken);
+    }
+}
+
+static class AppJson
+{
+    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
+}

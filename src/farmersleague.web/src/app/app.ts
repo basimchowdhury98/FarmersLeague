@@ -65,11 +65,13 @@ export class App {
   protected readonly matches = signal<MatchResponse[]>([]);
   protected readonly draft = signal<DraftResponse | null>(null);
   protected readonly draftError = signal('');
+  protected readonly draftLiveError = signal('');
   protected readonly hasAccess = signal(false);
   protected readonly isCheckingAccess = signal(true);
   protected readonly passkey = signal('');
   protected readonly userName = signal('');
   protected readonly route = signal<'home' | 'draft'>('home');
+  private draftSocket: WebSocket | null = null;
 
   constructor(private readonly http: HttpClient) {
     const passkey = window.location.pathname.split('/').filter(Boolean)[0];
@@ -169,6 +171,10 @@ export class App {
     return invertRows ? rows.reverse() : rows;
   }
 
+  protected displayedLineupRows(lineup: LineupResponse, invertRows = false) {
+    return this.hasFormationGrid(lineup) ? this.formationRows(lineup, invertRows) : [lineup.starters];
+  }
+
   protected hasFormationGrid(lineup: LineupResponse) {
     return lineup.starters.every((starter) => starter.gridRow !== null && starter.gridColumn !== null);
   }
@@ -180,12 +186,36 @@ export class App {
   protected isDraftButtonDisabled(playerName: string) {
     const draft = this.draft();
 
-    return !draft || draft.isComplete || this.draftedBy(playerName) !== null || this.picksFor(this.userName()).length >= maxPicksPerUser;
+    return (
+      !draft ||
+      draft.isComplete ||
+      draft.currentTurn !== this.userName() ||
+      this.draftedBy(playerName) !== null ||
+      this.picksFor(this.userName()).length >= maxPicksPerUser
+    );
   }
 
   private loadDraft(matchId: number) {
     this.http.get<DraftResponse>(`/api/drafts/${matchId}`).subscribe((response) => {
       this.draft.set(response);
+      this.connectDraftLiveUpdates(matchId);
+    });
+  }
+
+  private connectDraftLiveUpdates(matchId: number) {
+    this.draftSocket?.close();
+    this.draftLiveError.set('');
+
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const socket = new WebSocket(`${protocol}://${window.location.host}/api/drafts/${matchId}/live?passkey=${encodeURIComponent(this.passkey())}`);
+    this.draftSocket = socket;
+
+    socket.addEventListener('message', (event) => {
+      this.draft.set(JSON.parse(event.data) as DraftResponse);
+    });
+
+    socket.addEventListener('error', () => {
+      this.draftLiveError.set('Live updates unavailable');
     });
   }
 }

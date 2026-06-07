@@ -51,6 +51,12 @@ describe('Match draft page', () => {
     draftPlayerRow(player).within(() => cy.contains('button', 'Draft').click());
   };
 
+  const draftAs = (passkey, playerName) => {
+    cy.request('POST', `/api/drafts/${matchId}/picks`, { passkey, playerName })
+      .its('status')
+      .should('equal', 200);
+  };
+
   beforeEach(() => {
     cy.request('DELETE', '/api/testing/drafts').its('status').should('equal', 204);
   });
@@ -124,6 +130,45 @@ describe('Match draft page', () => {
       .should('be.disabled');
   });
 
+  // GIVEN Alice and Bob both have the Canada vs Mexico draft page open for a fresh draft
+  // WHEN Alice drafts an available player on her turn
+  // THEN Bob’s already-open draft page updates without reload to show the player drafted by Alice, Bob as the current turn, and the drafted player disabled
+  it('live updates Bob’s open draft page after Alice drafts a player', () => {
+    setAliceBobDraft();
+
+    cy.visit(`/${bobPasskey}/matches/${matchId}/draft`);
+    cy.testGet('draft-picks-Alice').should('not.contain.text', 'Dayne St. Clair');
+
+    draftAs(alicePasskey, 'Dayne St. Clair');
+
+    cy.testGet('draft-picks-Alice').should('contain.text', 'Dayne St. Clair');
+    draftPlayerRow('Dayne St. Clair')
+      .should('contain.text', 'Drafted by Alice')
+      .find('button')
+      .should('be.disabled');
+    cy.testGet('current-turn').should('contain.text', 'Bob');
+  });
+
+  // GIVEN Alice and Bob both have the Canada vs Mexico draft page open and it is Bob’s turn
+  // WHEN Bob drafts an available player
+  // THEN Alice’s already-open draft page updates without reload to show the player drafted by Bob, Alice as the current turn, and the drafted player disabled
+  it('live updates Alice’s open draft page after Bob drafts a player', () => {
+    setAliceBobDraft([{ userName: 'Alice', playerName: 'Dayne St. Clair' }]);
+
+    cy.visit(`/${alicePasskey}/matches/${matchId}/draft`);
+    cy.testGet('current-turn').should('contain.text', 'Bob');
+    cy.testGet('draft-picks-Bob').should('not.contain.text', 'Raúl Rangel');
+
+    draftAs(bobPasskey, 'Raúl Rangel');
+
+    cy.testGet('draft-picks-Bob').should('contain.text', 'Raúl Rangel');
+    draftPlayerRow('Raúl Rangel')
+      .should('contain.text', 'Drafted by Bob')
+      .find('button')
+      .should('be.disabled');
+    cy.testGet('current-turn').should('contain.text', 'Alice');
+  });
+
   // GIVEN Alice and Bob are drafting the Canada vs Mexico starters
   // WHEN users continue drafting in turn order
   // THEN each user can draft up to exactly 3 players
@@ -166,6 +211,35 @@ describe('Match draft page', () => {
     });
   });
 
+  // GIVEN Alice and Bob both have the Canada vs Mexico draft page open with each user one pick away from completing the draft
+  // WHEN the final player is drafted
+  // THEN both already-open draft pages update without reload to show Draft complete and the completed draft summary for both users
+  it('live updates an open draft page when the final pick completes the draft', () => {
+    setAliceBobDraft([
+      { userName: 'Alice', playerName: 'Dayne St. Clair' },
+      { userName: 'Bob', playerName: 'Raúl Rangel' },
+      { userName: 'Alice', playerName: 'Alistair Johnston' },
+      { userName: 'Bob', playerName: 'Israel Reyes' },
+      { userName: 'Alice', playerName: 'Kamal Miller' }
+    ]);
+
+    cy.visit(`/${alicePasskey}/matches/${matchId}/draft`);
+    cy.testGet('draft-status').should('not.contain.text', 'Draft complete');
+
+    draftAs(bobPasskey, 'César Montes');
+
+    cy.testGet('draft-status').should('contain.text', 'Draft complete');
+    cy.testGet('current-turn').should('not.exist');
+    cy.testGet('draft-summary').within(() => {
+      cy.testGet('draft-picks-Alice').should('contain.text', 'Dayne St. Clair').and('contain.text', 'Alistair Johnston').and('contain.text', 'Kamal Miller');
+      cy.testGet('draft-picks-Bob').should('contain.text', 'Raúl Rangel').and('contain.text', 'Israel Reyes').and('contain.text', 'César Montes');
+    });
+    draftPlayerRow('César Montes')
+      .should('contain.text', 'Drafted by Bob')
+      .find('button')
+      .should('be.disabled');
+  });
+
   // GIVEN players have already been drafted for Canada vs Mexico
   // WHEN Alice refreshes or reopens the draft page using her passkey URL
   // THEN the draft order, drafted players, unavailable players, and current/completed status are restored from Redis
@@ -188,15 +262,15 @@ describe('Match draft page', () => {
   });
 
   // GIVEN Bob opens the Canada vs Mexico draft page and it is Alice’s turn
-  // WHEN Bob attempts to draft an available player
-  // THEN the player is not drafted and Bob sees that he must wait for his turn
-  it('prevents a user from drafting when it is not their turn', () => {
+  // WHEN Bob views available players
+  // THEN every available player’s Draft button is disabled so Bob cannot draft out of turn
+  it('disables draft buttons when it is not the user’s turn', () => {
     setAliceBobDraft();
 
     cy.visit(`/${bobPasskey}/matches/${matchId}/draft`);
-    clickDraft('Dayne St. Clair');
 
-    cy.testGet('draft-error').should('contain.text', 'Wait for Alice’s turn');
+    cy.testGet('current-turn').should('contain.text', 'Alice');
+    cy.get('[data-test="draft-player"] button').should('have.length', 22).and('be.disabled');
     cy.testGet('draft-picks-Bob').should('not.contain.text', 'Dayne St. Clair');
     draftPlayerRow('Dayne St. Clair').should('not.contain.text', 'Drafted by Bob');
   });
@@ -239,5 +313,31 @@ describe('Match draft page', () => {
     cy.testGet('draft-page').should('not.exist');
     cy.testGet('draft-lineup-Canada').should('not.exist');
     cy.testGet('draft-lineup-Mexico').should('not.exist');
+  });
+
+  // GIVEN Alice opens the Canada vs Mexico draft page and the live draft connection fails
+  // WHEN the failure is detected
+  // THEN Alice sees an error explaining that live updates are unavailable
+  it('shows an error when live draft updates are unavailable', () => {
+    setAliceBobDraft();
+
+    cy.visit(`/${alicePasskey}/matches/${matchId}/draft`, {
+      onBeforeLoad(win) {
+        class FailingWebSocket extends win.EventTarget {
+          constructor() {
+            super();
+            setTimeout(() => this.dispatchEvent(new win.Event('error')), 0);
+          }
+
+          close() {}
+
+          send() {}
+        }
+
+        win.WebSocket = FailingWebSocket;
+      }
+    });
+
+    cy.testGet('draft-live-error').should('be.visible').and('contain.text', 'Live updates unavailable');
   });
 });
