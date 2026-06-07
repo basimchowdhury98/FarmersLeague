@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Microsoft.Extensions.Caching.Distributed;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,12 +14,29 @@ builder.Services.AddHttpClient("FootballApi", client =>
     client.BaseAddress = new Uri(baseUrl);
 });
 
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration = builder.Configuration["Redis:ConnectionString"] ?? "localhost:6379";
+    options.InstanceName = "FarmersLeague:";
+});
+
 var app = builder.Build();
+
+await SeedLocalUsers(app.Services);
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.MapGet("/api/hello", () => new HelloResponse("Hello from FarmersLeague API"));
+
+app.MapGet("/api/access/{passkey}", async (string passkey, IDistributedCache cache, CancellationToken cancellationToken) =>
+{
+    var userName = await cache.GetStringAsync(UserPasskeyCacheKey(passkey), cancellationToken);
+
+    return userName is null
+        ? Results.NotFound(new AccessResponse(false, null))
+        : Results.Ok(new AccessResponse(true, userName));
+});
 
 app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, CancellationToken cancellationToken) =>
 {
@@ -41,7 +59,30 @@ app.MapFallbackToFile("index.html");
 
 app.Run();
 
+static async Task SeedLocalUsers(IServiceProvider services)
+{
+    using var scope = services.CreateScope();
+    var cache = scope.ServiceProvider.GetRequiredService<IDistributedCache>();
+
+    var users = new[]
+    {
+        new TestUser("Alice", "11111111-1111-1111-1111-111111111111"),
+        new TestUser("Bob", "22222222-2222-2222-2222-222222222222")
+    };
+
+    foreach (var user in users)
+    {
+        await cache.SetStringAsync(UserPasskeyCacheKey(user.Passkey), user.Name);
+    }
+}
+
+static string UserPasskeyCacheKey(string passkey) => $"users:passkeys:{passkey}";
+
 record HelloResponse(string Message);
+
+record AccessResponse(bool HasAccess, string? UserName);
+
+record TestUser(string Name, string Passkey);
 
 record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date);
 
