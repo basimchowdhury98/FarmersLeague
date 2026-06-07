@@ -26,20 +26,84 @@
         }
       </section>
     } @else if (draft(); as draftState) {
-      <section class="hero draft-hero" data-test="draft-page">
-        <p class="eyebrow">World Cup friends league</p>
-        <h1 data-test="draft-title">{{ draftState.match.homeTeam }} vs {{ draftState.match.awayTeam }} Draft</h1>
-        <p class="intro" data-test="draft-status">
-          @if (draftState.isComplete) {
-            Draft complete
-          } @else {
-            Draft {{ maxPicksPerUser }} starters per user.
-          }
-        </p>
+      <section class="draft-top" data-test="draft-page">
+        <div class="draft-title-block">
+          <p class="eyebrow">World Cup friends league</p>
+          <h1 data-test="draft-title">{{ draftState.match.homeTeam }} vs {{ draftState.match.awayTeam }} Draft</h1>
+          <p class="intro" data-test="draft-status">
+            @if (draftState.isComplete) {
+              Draft complete
+            } @else {
+              Draft {{ maxPicksPerUser }} starters per user.
+            }
+          </p>
+        </div>
+
       </section>
 
-      <section class="card draft-meta" aria-label="Draft status">
-        <div data-test="draft-order">
+      <section class="turn-card" aria-label="Draft status">
+        <div>
+          <span class="muted-label">You are</span>
+          <strong>{{ userName() }}</strong>
+        </div>
+        <div>
+          <span class="muted-label">Your picks</span>
+          <strong>{{ userPickCount() }}/{{ maxPicksPerUser }}</strong>
+        </div>
+        @if (!draftState.isComplete) {
+          <p class="current-turn" data-test="current-turn">Current turn: {{ draftState.currentTurn }}</p>
+        }
+      </section>
+
+      @if (draftError()) {
+        <p class="draft-error" data-test="draft-error">{{ draftError() }}</p>
+      }
+
+      <section class="concept split-match" aria-label="Split match field">
+        <div class="mega-pitch">
+          @for (lineup of draftState.match.lineups; track lineup.teamName) {
+            <article class="lineup split-team" [attr.data-test]="'draft-lineup-' + lineup.teamName">
+              <h2>{{ lineup.teamName }} Starting 11 <span>{{ lineup.formation }}</span></h2>
+              @if (hasFormationGrid(lineup)) {
+                @for (row of formationRows(lineup, lineup.teamName === draftState.match.awayTeam); track $index) {
+                  <div class="formation-row compact-row">
+                    @for (starter of row; track starter.name) {
+                      <div class="draft-player player-slot compact" data-test="draft-player">
+                        <button type="button" [disabled]="isDraftButtonDisabled(starter.name)" (click)="draftPlayer(starter.name)">
+                          <span>{{ starter.name }}</span>
+                          @if (draftedBy(starter.name); as manager) {
+                            <small>Drafted by {{ manager }}</small>
+                          } @else {
+                            <small>Draft</small>
+                          }
+                        </button>
+                      </div>
+                    }
+                  </div>
+                }
+              } @else {
+                <div class="fallback-starters">
+                  @for (starter of lineup.starters; track starter.name) {
+                    <div class="draft-player player-slot compact" data-test="draft-player">
+                      <button type="button" [disabled]="isDraftButtonDisabled(starter.name)" (click)="draftPlayer(starter.name)">
+                        <span>{{ starter.name }}</span>
+                        @if (draftedBy(starter.name); as manager) {
+                          <small>Drafted by {{ manager }}</small>
+                        } @else {
+                          <small>Draft</small>
+                        }
+                      </button>
+                    </div>
+                  }
+                </div>
+              }
+            </article>
+          }
+        </div>
+      </section>
+
+      <section class="draft-summary" data-test="draft-summary" aria-label="Draft summary">
+        <div data-test="draft-order" class="draft-order-card">
           <h2>Draft order</h2>
           <ol>
             @for (draftUser of draftState.draftOrder; track draftUser) {
@@ -48,17 +112,6 @@
           </ol>
         </div>
 
-        @if (!draftState.isComplete) {
-          <p class="current-turn" data-test="current-turn">Current turn: {{ draftState.currentTurn }}</p>
-        }
-
-        @if (draftError()) {
-          <p class="draft-error" data-test="draft-error">{{ draftError() }}</p>
-        }
-      </section>
-
-      <section class="card draft-summary" data-test="draft-summary" aria-label="Draft summary">
-        <h2>Draft summary</h2>
         @for (draftUser of draftState.draftOrder; track draftUser) {
           <article class="manager-picks" [attr.data-test]="'draft-picks-' + draftUser">
             <h3>{{ draftUser }}</h3>
@@ -67,27 +120,6 @@
                 <li data-test="drafted-player">{{ pick.playerName }}</li>
               } @empty {
                 <li class="empty-pick">No players drafted yet</li>
-              }
-            </ol>
-          </article>
-        }
-      </section>
-
-      <section class="card lineups" aria-labelledby="lineups-heading">
-        <h2 id="lineups-heading">Starting 11s</h2>
-
-        @for (lineup of draftState.match.lineups; track lineup.teamName) {
-          <article class="lineup" [attr.data-test]="'draft-lineup-' + lineup.teamName">
-            <h2>{{ lineup.teamName }} Starting 11</h2>
-            <ol>
-              @for (player of lineup.starters; track player) {
-                <li class="draft-player" data-test="draft-player">
-                  <span>{{ player }}</span>
-                  @if (draftedBy(player); as manager) {
-                    <span class="drafted-label">Drafted by {{ manager }}</span>
-                  }
-                  <button type="button" [disabled]="isDraftButtonDisabled(player)" (click)="draftPlayer(player)">Draft</button>
-                </li>
               }
             </ol>
           </article>

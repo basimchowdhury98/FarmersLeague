@@ -16,7 +16,17 @@ type MatchResponse = {
 
 type LineupResponse = {
   teamName: string;
-  starters: string[];
+  formation: string;
+  starters: StarterResponse[];
+};
+
+type StarterResponse = {
+  name: string;
+  number: number | null;
+  position: string | null;
+  grid: string | null;
+  gridRow: number | null;
+  gridColumn: number | null;
 };
 
 type AccessResponse = {
@@ -139,6 +149,32 @@ export class App {
 
   protected picksFor(userName: string) {
     return this.draft()?.picks.filter((pick) => pick.userName === userName) ?? [];
+  }
+
+  protected formationRows(lineup: LineupResponse, invertRows = false) {
+    const grouped = new Map<number, StarterResponse[]>();
+
+    for (const starter of lineup.starters) {
+      if (starter.gridRow === null || starter.gridColumn === null) {
+        continue;
+      }
+
+      grouped.set(starter.gridRow, [...(grouped.get(starter.gridRow) ?? []), starter]);
+    }
+
+    const rows = [...grouped.entries()]
+      .sort(([rowA], [rowB]) => rowA - rowB)
+      .map(([, starters]) => starters.sort((a, b) => (a.gridColumn ?? 0) - (b.gridColumn ?? 0)));
+
+    return invertRows ? rows.reverse() : rows;
+  }
+
+  protected hasFormationGrid(lineup: LineupResponse) {
+    return lineup.starters.every((starter) => starter.gridRow !== null && starter.gridColumn !== null);
+  }
+
+  protected userPickCount() {
+    return this.picksFor(this.userName()).length;
   }
 
   protected isDraftButtonDisabled(playerName: string) {

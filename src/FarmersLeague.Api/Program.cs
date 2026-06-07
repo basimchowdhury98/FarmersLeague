@@ -80,7 +80,7 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
         return Results.BadRequest(new DraftPickErrorResponse($"Wait for {draftResponse.CurrentTurn}’s turn"));
     }
 
-    if (!match.Lineups.SelectMany(lineup => lineup.Starters).Contains(request.PlayerName))
+    if (!match.Lineups.SelectMany(lineup => lineup.Starters).Any(starter => string.Equals(starter.Name, request.PlayerName, StringComparison.Ordinal)))
     {
         return Results.BadRequest(new DraftPickErrorResponse("Player is not available in this match"));
     }
@@ -219,7 +219,34 @@ static MatchResponse ToMatchResponse(ApiFootballFixtureItem fixture) => new(
 
 static LineupResponse ToLineupResponse(ApiFootballLineup lineup) => new(
     lineup.Team.Name,
-    lineup.StartXI.Select(starter => starter.Player.Name).ToArray());
+    lineup.Formation,
+    lineup.StartXI.Select(ToStarterResponse).ToArray());
+
+static StarterResponse ToStarterResponse(ApiFootballStarter starter)
+{
+    var (gridRow, gridColumn) = ParseGrid(starter.Player.Grid);
+
+    return new StarterResponse(
+        starter.Player.Name,
+        starter.Player.Number,
+        starter.Player.Pos,
+        starter.Player.Grid,
+        gridRow,
+        gridColumn);
+}
+
+static (int? Row, int? Column) ParseGrid(string? grid)
+{
+    var parts = grid?.Split(':');
+    if (parts?.Length != 2)
+    {
+        return (null, null);
+    }
+
+    return int.TryParse(parts[0], out var row) && int.TryParse(parts[1], out var column)
+        ? (row, column)
+        : (null, null);
+}
 
 static JsonSerializerOptions JsonOptions() => new(JsonSerializerDefaults.Web);
 
@@ -247,7 +274,9 @@ record DraftResponse(MatchResponse Match, IReadOnlyList<string> DraftOrder, IRea
 
 record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups);
 
-record LineupResponse(string TeamName, IReadOnlyList<string> Starters);
+record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterResponse> Starters);
+
+record StarterResponse(string Name, int? Number, string? Position, string? Grid, int? GridRow, int? GridColumn);
 
 record ApiFootballFixturesResponse(IReadOnlyList<ApiFootballFixtureItem> Response);
 
@@ -261,8 +290,8 @@ record ApiFootballTeams(ApiFootballTeam Home, ApiFootballTeam Away);
 
 record ApiFootballTeam(string Name);
 
-record ApiFootballLineup(ApiFootballTeam Team, IReadOnlyList<ApiFootballStarter> StartXI);
+record ApiFootballLineup(ApiFootballTeam Team, string Formation, IReadOnlyList<ApiFootballStarter> StartXI);
 
 record ApiFootballStarter(ApiFootballPlayer Player);
 
-record ApiFootballPlayer(string Name);
+record ApiFootballPlayer(string Name, int? Number, string? Pos, string? Grid);
