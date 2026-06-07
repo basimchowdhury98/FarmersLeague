@@ -51,7 +51,21 @@ type DraftPickErrorResponse = {
   message: string;
 };
 
+type DraftPickFlight = {
+  id: number;
+  userName: string;
+  playerName: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  deltaX: number;
+  deltaY: number;
+};
+
 const maxPicksPerUser = 3;
+const draftPickFlightDurationMs = 850;
+const draftedHighlightDurationMs = 1100;
 
 @Component({
   selector: 'app-root',
@@ -66,12 +80,18 @@ export class App {
   protected readonly draft = signal<DraftResponse | null>(null);
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
+  protected readonly draftPickFlight = signal<DraftPickFlight | null>(null);
+  protected readonly recentlyDraftedPlayer = signal('');
   protected readonly hasAccess = signal(false);
   protected readonly isCheckingAccess = signal(true);
   protected readonly passkey = signal('');
   protected readonly userName = signal('');
   protected readonly route = signal<'home' | 'draft'>('home');
   private draftSocket: WebSocket | null = null;
+  private draftPickFlightId = 0;
+  private activeDraftPickFlightKey = '';
+  private draftPickFlightTimeout: number | null = null;
+  private draftedHighlightTimeout: number | null = null;
 
   constructor(private readonly http: HttpClient) {
     const passkey = window.location.pathname.split('/').filter(Boolean)[0];
@@ -136,7 +156,7 @@ export class App {
       playerName
     }).subscribe({
       next: (response) => {
-        this.draft.set(response);
+        this.applyDraftUpdate(response);
       },
       error: (error) => {
         const response = error.error as DraftPickErrorResponse | undefined;
@@ -210,6 +230,10 @@ export class App {
     );
   }
 
+  protected isRecentlyDrafted(playerName: string) {
+    return this.recentlyDraftedPlayer() === playerName;
+  }
+
   private loadDraft(matchId: number) {
     this.http.get<DraftResponse>(`/api/drafts/${matchId}`).subscribe((response) => {
       this.draft.set(response);
@@ -226,11 +250,117 @@ export class App {
     this.draftSocket = socket;
 
     socket.addEventListener('message', (event) => {
-      this.draft.set(JSON.parse(event.data) as DraftResponse);
+      this.applyDraftUpdate(JSON.parse(event.data) as DraftResponse);
     });
 
     socket.addEventListener('error', () => {
       this.draftLiveError.set('Live updates unavailable');
     });
+  }
+
+  private applyDraftUpdate(response: DraftResponse) {
+    const currentDraft = this.draft();
+    if (!currentDraft) {
+      this.draft.set(response);
+      return;
+    }
+
+    const newPick = this.newDraftPick(currentDraft, response);
+    if (!newPick) {
+      if (!this.isActiveDraftPickFlight(response)) {
+        this.draft.set(response);
+      }
+
+      return;
+    }
+
+    const flightKey = this.draftPickKey(newPick);
+    if (flightKey === this.activeDraftPickFlightKey) {
+      return;
+    }
+
+    const flight = this.createDraftPickFlight(newPick);
+    if (!flight) {
+      this.draft.set(response);
+      this.highlightDraftedPlayer(newPick.playerName);
+      return;
+    }
+
+    this.clearDraftPickFlightTimeout();
+    this.activeDraftPickFlightKey = flightKey;
+    this.draftPickFlight.set(flight);
+
+    this.draftPickFlightTimeout = window.setTimeout(() => {
+      this.draft.set(response);
+      this.draftPickFlight.set(null);
+      this.activeDraftPickFlightKey = '';
+      this.draftPickFlightTimeout = null;
+      this.highlightDraftedPlayer(newPick.playerName);
+    }, draftPickFlightDurationMs);
+  }
+
+  private newDraftPick(currentDraft: DraftResponse, nextDraft: DraftResponse) {
+    if (nextDraft.picks.length !== currentDraft.picks.length + 1) {
+      return null;
+    }
+
+    const currentPickKeys = new Set(currentDraft.picks.map((pick) => this.draftPickKey(pick)));
+    return nextDraft.picks.find((pick) => !currentPickKeys.has(this.draftPickKey(pick))) ?? null;
+  }
+
+  private isActiveDraftPickFlight(response: DraftResponse) {
+    return response.picks.some((pick) => this.draftPickKey(pick) === this.activeDraftPickFlightKey);
+  }
+
+  private createDraftPickFlight(pick: DraftPick): DraftPickFlight | null {
+    const source = this.findElementByAttribute('data-draft-turn-user', pick.userName);
+    const target = this.findElementByAttribute('data-draft-player-name', pick.playerName);
+
+    if (!source || !target) {
+      return null;
+    }
+
+    const sourceBox = source.getBoundingClientRect();
+    const targetBox = target.getBoundingClientRect();
+
+    return {
+      id: ++this.draftPickFlightId,
+      userName: pick.userName,
+      playerName: pick.playerName,
+      left: sourceBox.left,
+      top: sourceBox.top,
+      width: sourceBox.width,
+      height: sourceBox.height,
+      deltaX: targetBox.left + targetBox.width / 2 - (sourceBox.left + sourceBox.width / 2),
+      deltaY: targetBox.top + targetBox.height / 2 - (sourceBox.top + sourceBox.height / 2)
+    };
+  }
+
+  private findElementByAttribute(attributeName: string, value: string) {
+    return [...document.querySelectorAll<HTMLElement>(`[${attributeName}]`)].find(
+      (element) => element.getAttribute(attributeName) === value
+    ) ?? null;
+  }
+
+  private draftPickKey(pick: DraftPick) {
+    return `${pick.userName}\u0000${pick.playerName}`;
+  }
+
+  private highlightDraftedPlayer(playerName: string) {
+    window.clearTimeout(this.draftedHighlightTimeout ?? undefined);
+    this.recentlyDraftedPlayer.set(playerName);
+    this.draftedHighlightTimeout = window.setTimeout(() => {
+      this.recentlyDraftedPlayer.set('');
+      this.draftedHighlightTimeout = null;
+    }, draftedHighlightDurationMs);
+  }
+
+  private clearDraftPickFlightTimeout() {
+    if (this.draftPickFlightTimeout === null) {
+      return;
+    }
+
+    window.clearTimeout(this.draftPickFlightTimeout);
+    this.draftPickFlightTimeout = null;
   }
 }

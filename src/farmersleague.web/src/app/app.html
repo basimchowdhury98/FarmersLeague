@@ -59,6 +59,7 @@
                 <li
                   class="draft-turn-queue-item"
                   data-test="draft-turn-queue-item"
+                  [attr.data-draft-turn-user]="draftTurn"
                   [class.active-turn]="$first"
                   [style.opacity]="turnQueueItemOpacity($index)"
                 >
@@ -87,7 +88,13 @@
                 <div [class]="hasFormationGrid(lineup) ? 'formation-row compact-row' : 'fallback-starters'">
                   @for (starter of row; track starter.name) {
                     <div class="draft-player player-slot compact" data-test="draft-player">
-                      <button type="button" [disabled]="isDraftButtonDisabled(starter.name)" (click)="draftPlayer(starter.name)">
+                      <button
+                        type="button"
+                        [attr.data-draft-player-name]="starter.name"
+                        [class.just-drafted]="isRecentlyDrafted(starter.name)"
+                        [disabled]="isDraftButtonDisabled(starter.name)"
+                        (click)="draftPlayer(starter.name)"
+                      >
                         <span>{{ starter.name }}</span>
                         @if (draftedBy(starter.name); as manager) {
                           <small>Drafted by {{ manager }}</small>
@@ -103,6 +110,21 @@
           }
         </div>
       </section>
+
+      @if (draftPickFlight(); as flight) {
+        <div
+          class="draft-pick-flight"
+          aria-hidden="true"
+          [style.left.px]="flight.left"
+          [style.top.px]="flight.top"
+          [style.width.px]="flight.width"
+          [style.height.px]="flight.height"
+          [style.--flight-x]="flight.deltaX + 'px'"
+          [style.--flight-y]="flight.deltaY + 'px'"
+        >
+          <span>{{ flight.userName }}</span>
+        </div>
+      }
 
       <section class="draft-summary" data-test="draft-summary" aria-label="Draft summary">
         <div data-test="draft-order" class="draft-order-card">
