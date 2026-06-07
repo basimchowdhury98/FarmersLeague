@@ -6,39 +6,96 @@
   </main>
 } @else if (hasAccess()) {
   <main class="shell">
-    <section class="hero">
-      <p class="eyebrow">World Cup friends league</p>
-      <h1>FarmersLeague</h1>
-      <p class="intro" data-test="api-greeting">{{ hello() }}</p>
-    </section>
+    @if (route() === 'home') {
+      <section class="hero">
+        <p class="eyebrow">World Cup friends league</p>
+        <h1>FarmersLeague</h1>
+        <p class="intro" data-test="api-greeting">{{ hello() }}</p>
+      </section>
 
-    <section class="card" aria-labelledby="matches-heading">
-      <h2 id="matches-heading">Mocked Match Feed</h2>
+      <section class="card" aria-labelledby="matches-heading">
+        <h2 id="matches-heading">Mocked Match Feed</h2>
 
-      @for (match of matches(); track match.id) {
-        <button class="match" type="button" data-test="match-card" (click)="selectMatch(match)">
-          <span class="league" data-test="match-league">{{ match.league }}</span>
-          <span class="match-teams" data-test="match-teams">{{ match.homeTeam }} vs {{ match.awayTeam }}</span>
-        </button>
-      } @empty {
-        <p data-test="matches-loading">Loading mocked matches...</p>
-      }
-    </section>
+        @for (match of matches(); track match.id) {
+          <button class="match" type="button" data-test="match-card" (click)="openDraft(match)">
+            <span class="league" data-test="match-league">{{ match.league }}</span>
+            <span class="match-teams" data-test="match-teams">{{ match.homeTeam }} vs {{ match.awayTeam }}</span>
+          </button>
+        } @empty {
+          <p data-test="matches-loading">Loading mocked matches...</p>
+        }
+      </section>
+    } @else if (draft(); as draftState) {
+      <section class="hero draft-hero" data-test="draft-page">
+        <p class="eyebrow">World Cup friends league</p>
+        <h1 data-test="draft-title">{{ draftState.match.homeTeam }} vs {{ draftState.match.awayTeam }} Draft</h1>
+        <p class="intro" data-test="draft-status">
+          @if (draftState.isComplete) {
+            Draft complete
+          } @else {
+            Draft {{ maxPicksPerUser }} starters per user.
+          }
+        </p>
+      </section>
 
-    @if (selectedMatch(); as match) {
-      <section class="card lineups" data-test="match-lineups" aria-labelledby="lineups-heading">
-        <h2 id="lineups-heading">Starting 11s</h2>
+      <section class="card draft-meta" aria-label="Draft status">
+        <div data-test="draft-order">
+          <h2>Draft order</h2>
+          <ol>
+            @for (draftUser of draftState.draftOrder; track draftUser) {
+              <li data-test="draft-order-user">{{ draftUser }}</li>
+            }
+          </ol>
+        </div>
 
-        @for (lineup of match.lineups; track lineup.teamName) {
-          <article class="lineup" [attr.data-test]="'lineup-' + lineup.teamName">
-            <h2>{{ lineup.teamName }} Starting 11</h2>
+        @if (!draftState.isComplete) {
+          <p class="current-turn" data-test="current-turn">Current turn: {{ draftState.currentTurn }}</p>
+        }
+
+        @if (draftError()) {
+          <p class="draft-error" data-test="draft-error">{{ draftError() }}</p>
+        }
+      </section>
+
+      <section class="card draft-summary" data-test="draft-summary" aria-label="Draft summary">
+        <h2>Draft summary</h2>
+        @for (draftUser of draftState.draftOrder; track draftUser) {
+          <article class="manager-picks" [attr.data-test]="'draft-picks-' + draftUser">
+            <h3>{{ draftUser }}</h3>
             <ol>
-              @for (player of lineup.starters; track player) {
-                <li data-test="lineup-player">{{ player }}</li>
+              @for (pick of picksFor(draftUser); track pick.playerName) {
+                <li data-test="drafted-player">{{ pick.playerName }}</li>
+              } @empty {
+                <li class="empty-pick">No players drafted yet</li>
               }
             </ol>
           </article>
         }
+      </section>
+
+      <section class="card lineups" aria-labelledby="lineups-heading">
+        <h2 id="lineups-heading">Starting 11s</h2>
+
+        @for (lineup of draftState.match.lineups; track lineup.teamName) {
+          <article class="lineup" [attr.data-test]="'draft-lineup-' + lineup.teamName">
+            <h2>{{ lineup.teamName }} Starting 11</h2>
+            <ol>
+              @for (player of lineup.starters; track player) {
+                <li class="draft-player" data-test="draft-player">
+                  <span>{{ player }}</span>
+                  @if (draftedBy(player); as manager) {
+                    <span class="drafted-label">Drafted by {{ manager }}</span>
+                  }
+                  <button type="button" [disabled]="isDraftButtonDisabled(player)" (click)="draftPlayer(player)">Draft</button>
+                </li>
+              }
+            </ol>
+          </article>
+        }
+      </section>
+    } @else {
+      <section class="hero">
+        <p class="intro">Loading draft...</p>
       </section>
     }
   </main>

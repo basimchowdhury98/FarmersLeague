@@ -19,6 +19,30 @@ type LineupResponse = {
   starters: string[];
 };
 
+type AccessResponse = {
+  hasAccess: boolean;
+  userName: string;
+};
+
+type DraftResponse = {
+  match: MatchResponse;
+  draftOrder: string[];
+  picks: DraftPick[];
+  currentTurn: string | null;
+  isComplete: boolean;
+};
+
+type DraftPick = {
+  userName: string;
+  playerName: string;
+};
+
+type DraftPickErrorResponse = {
+  message: string;
+};
+
+const maxPicksPerUser = 3;
+
 @Component({
   selector: 'app-root',
   imports: [],
@@ -26,26 +50,33 @@ type LineupResponse = {
   styleUrl: './app.css'
 })
 export class App {
+  protected readonly maxPicksPerUser = maxPicksPerUser;
   protected readonly hello = signal('Loading API greeting...');
   protected readonly matches = signal<MatchResponse[]>([]);
-  protected readonly selectedMatch = signal<MatchResponse | null>(null);
+  protected readonly draft = signal<DraftResponse | null>(null);
+  protected readonly draftError = signal('');
   protected readonly hasAccess = signal(false);
   protected readonly isCheckingAccess = signal(true);
+  protected readonly passkey = signal('');
+  protected readonly userName = signal('');
+  protected readonly route = signal<'home' | 'draft'>('home');
 
-  constructor(http: HttpClient) {
+  constructor(private readonly http: HttpClient) {
     const passkey = window.location.pathname.split('/').filter(Boolean)[0];
+    this.passkey.set(passkey ?? '');
 
     if (!passkey) {
       this.isCheckingAccess.set(false);
       return;
     }
 
-    http.get(`/api/access/${passkey}`).subscribe({
-      next: () => {
+    http.get<AccessResponse>(`/api/access/${passkey}`).subscribe({
+      next: (response) => {
         this.hasAccess.set(true);
+        this.userName.set(response.userName);
         this.isCheckingAccess.set(false);
 
-        this.loadHomePage(http);
+        this.loadCurrentRoute();
       },
       error: () => {
         this.isCheckingAccess.set(false);
@@ -53,17 +84,72 @@ export class App {
     });
   }
 
-  private loadHomePage(http: HttpClient) {
-    http.get<HelloResponse>('/api/hello').subscribe((response) => {
+  private loadCurrentRoute() {
+    const draftMatch = window.location.pathname.match(/^\/[^/]+\/matches\/(\d+)\/draft$/);
+
+    if (draftMatch) {
+      this.route.set('draft');
+      this.loadDraft(Number(draftMatch[1]));
+      return;
+    }
+
+    this.route.set('home');
+    this.loadHomePage();
+  }
+
+  private loadHomePage() {
+    this.http.get<HelloResponse>('/api/hello').subscribe((response) => {
       this.hello.set(response.message);
     });
 
-    http.get<MatchResponse[]>('/api/matches').subscribe((response) => {
+    this.http.get<MatchResponse[]>('/api/matches').subscribe((response) => {
       this.matches.set(response);
     });
   }
 
-  protected selectMatch(match: MatchResponse) {
-    this.selectedMatch.set(match);
+  protected openDraft(match: MatchResponse) {
+    window.location.href = `/${this.passkey()}/matches/${match.id}/draft`;
+  }
+
+  protected draftPlayer(playerName: string) {
+    const draft = this.draft();
+    if (!draft) {
+      return;
+    }
+
+    this.draftError.set('');
+
+    this.http.post<DraftResponse>(`/api/drafts/${draft.match.id}/picks`, {
+      passkey: this.passkey(),
+      playerName
+    }).subscribe({
+      next: (response) => {
+        this.draft.set(response);
+      },
+      error: (error) => {
+        const response = error.error as DraftPickErrorResponse | undefined;
+        this.draftError.set(response?.message ?? 'Unable to draft player');
+      }
+    });
+  }
+
+  protected draftedBy(playerName: string) {
+    return this.draft()?.picks.find((pick) => pick.playerName === playerName)?.userName ?? null;
+  }
+
+  protected picksFor(userName: string) {
+    return this.draft()?.picks.filter((pick) => pick.userName === userName) ?? [];
+  }
+
+  protected isDraftButtonDisabled(playerName: string) {
+    const draft = this.draft();
+
+    return !draft || draft.isComplete || this.draftedBy(playerName) !== null || this.picksFor(this.userName()).length >= maxPicksPerUser;
+  }
+
+  private loadDraft(matchId: number) {
+    this.http.get<DraftResponse>(`/api/drafts/${matchId}`).subscribe((response) => {
+      this.draft.set(response);
+    });
   }
 }

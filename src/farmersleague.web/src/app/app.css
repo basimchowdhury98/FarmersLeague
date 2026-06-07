@@ -65,7 +65,8 @@ h1 {
   gap: 1rem;
 }
 
-.lineup {
+.lineup,
+.manager-picks {
   padding: 1rem;
   border-radius: 1rem;
   background: rgb(255 255 255 / 10%);
@@ -77,4 +78,69 @@ h1 {
 
 .lineup li {
   margin: 0.35rem 0;
+}
+
+.draft-hero h1 {
+  max-width: 60rem;
+  font-size: clamp(2.5rem, 8vw, 5rem);
+}
+
+.draft-meta,
+.draft-summary {
+  display: grid;
+  gap: 1rem;
+}
+
+.current-turn {
+  margin: 0;
+  color: #ffc857;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.draft-error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  background: #ffd7d7;
+  color: #6d1010;
+  font-weight: 700;
+}
+
+.manager-picks h3 {
+  margin-top: 0;
+}
+
+.empty-pick {
+  color: rgb(255 248 230 / 75%);
+}
+
+.draft-player {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.drafted-label {
+  margin-left: auto;
+  color: #ffc857;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.draft-player button {
+  padding: 0.45rem 0.75rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #ffc857;
+  color: #10291f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.draft-player button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
