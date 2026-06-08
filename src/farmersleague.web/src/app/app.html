@@ -127,15 +127,6 @@
       }
 
       <section class="draft-summary" data-test="draft-summary" aria-label="Draft summary">
-        <div data-test="draft-order" class="draft-order-card">
-          <h2>Draft order</h2>
-          <ol>
-            @for (draftUser of draftState.draftOrder; track draftUser) {
-              <li data-test="draft-order-user">{{ draftUser }}</li>
-            }
-          </ol>
-        </div>
-
         @for (draftUser of draftState.draftOrder; track draftUser) {
           <article class="manager-picks" [attr.data-test]="'draft-picks-' + draftUser">
             <h3>{{ draftUser }}</h3>

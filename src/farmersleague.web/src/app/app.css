@@ -47,8 +47,7 @@ h3 {
 }
 
 .card,
-.manager-picks,
-.draft-order-card {
+.manager-picks {
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 1.25rem;
   background: rgb(255 255 255 / 7%);
@@ -365,12 +364,10 @@ h3 {
   gap: 1rem;
 }
 
-.draft-order-card,
 .manager-picks {
   padding: 1rem;
 }
 
-.draft-order-card ol,
 .manager-picks ol {
   margin-bottom: 0;
   padding-left: 1.25rem;
@@ -393,9 +390,6 @@ h3 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .draft-order-card {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (min-width: 1020px) {
@@ -403,7 +397,4 @@ h3 {
     grid-template-columns: 0.8fr repeat(2, 1fr);
   }
 
-  .draft-order-card {
-    grid-column: auto;
-  }
 }
