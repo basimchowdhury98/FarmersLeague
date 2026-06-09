@@ -7,21 +7,51 @@
 } @else if (hasAccess()) {
   <main class="shell">
     @if (route() === 'home') {
-      <section class="hero">
-        <p class="eyebrow">World Cup friends league</p>
-        <h1>FarmersLeague</h1>
-        <p class="intro" data-test="api-greeting">{{ hello() }}</p>
-      </section>
+      <section class="scoreboard" aria-labelledby="matches-heading">
+        <div class="scoreboard-topbar">
+          <div>
+            <p class="scoreboard-clock">Today</p>
+            <h1 id="matches-heading">FarmersLeague</h1>
+          </div>
+          <div class="scoreboard-user-pill">
+            <span aria-hidden="true">★</span>
+            <span>{{ userName() || 'My Team' }}</span>
+          </div>
+        </div>
 
-      <section class="card" aria-labelledby="matches-heading">
-        <h2 id="matches-heading">Mocked Match Feed</h2>
+        <p class="scoreboard-greeting" data-test="api-greeting">{{ homeGreeting() }}</p>
+
+        <nav class="scoreboard-tabs" aria-label="Match feed filters">
+          <span>Yesterday</span>
+          <strong>Today</strong>
+          <span>Upcoming</span>
+        </nav>
+
+        <div class="scoreboard-section-title">
+          <span>Upcoming Games</span>
+          <span>{{ matches().length }} listed</span>
+        </div>
 
         @for (match of matches(); track match.id) {
           <article class="match" data-test="match-card" (click)="openDraft(match)">
             <span class="league" data-test="match-league">{{ match.league }}</span>
+            <span class="team-side team-side-home">
+              <span class="team-badge">{{ teamInitials(match.homeTeam) }}</span>
+              <span class="team-name">{{ match.homeTeam }}</span>
+            </span>
+            <span class="match-center">
+              <span class="match-kickoff" data-test="match-kickoff">Kickoff {{ shortKickoffText(match) }}</span>
+              @if (matchDraftStatus(match)) {
+                <span class="match-draft-status" data-test="match-draft-status">{{ matchDraftStatus(match) }}</span>
+              } @else {
+                <span class="match-draft-status is-empty" data-test="match-draft-status">No draft yet</span>
+              }
+            </span>
+            <span class="team-side team-side-away">
+              <span class="team-badge team-badge-away">{{ teamInitials(match.awayTeam) }}</span>
+              <span class="team-name">{{ match.awayTeam }}</span>
+            </span>
             <span class="match-teams" data-test="match-teams">{{ match.homeTeam }} vs {{ match.awayTeam }}</span>
-            <span class="match-kickoff" data-test="match-kickoff">Kickoff {{ kickoffText(match) }}</span>
-            <span class="match-draft-status" data-test="match-draft-status">{{ matchDraftStatus(match) }}</span>
             <span class="match-actions">
               @if (canCreateDraft(match)) {
                 <button type="button" data-test="create-draft-button" (click)="createDraft(match, $event)">Create draft</button>
@@ -35,7 +65,7 @@
             </span>
           </article>
         } @empty {
-          <p data-test="matches-loading">Loading mocked matches...</p>
+          <p class="matches-loading" data-test="matches-loading">Loading mocked matches...</p>
         }
       </section>
     } @else if (draft(); as draftState) {

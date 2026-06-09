@@ -220,6 +220,23 @@ export class App {
     return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(match.date));
   }
 
+  protected homeGreeting() {
+    return this.userName() ? `Welcome back, ${this.userName()}` : 'World Cup draft room';
+  }
+
+  protected shortKickoffText(match: MatchResponse) {
+    return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(match.date));
+  }
+
+  protected teamInitials(teamName: string) {
+    return teamName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase() ?? '')
+      .join('');
+  }
+
   protected draftPlayer(playerName: string) {
     const draft = this.draft();
     if (!draft) {

@@ -1,13 +1,16 @@
 .shell {
   min-height: 100vh;
   padding: 2rem 1rem 4rem;
-  background: #07140f;
+  background:
+    radial-gradient(circle at 100% 0, rgb(80 18 106 / 54%), transparent 24rem),
+    radial-gradient(circle at 0 0, rgb(12 111 38 / 74%), transparent 20rem),
+    linear-gradient(180deg, #041609 0, #050805 45%, #000 100%);
   color: #f7f1df;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .hero,
-.card,
+.scoreboard,
 .draft-top,
 .turn-card,
 .concept,
@@ -19,7 +22,6 @@
 }
 
 .eyebrow,
-.league,
 .muted-label {
   color: #b8e986;
   font-size: 0.76rem;
@@ -46,54 +48,12 @@ h3 {
   color: rgb(247 241 223 / 78%);
 }
 
-.card,
 .manager-picks {
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 1.25rem;
   background: rgb(255 255 255 / 7%);
 }
 
-.card {
-  margin-top: 2rem;
-  padding: 1.25rem;
-}
-
-.match {
-  display: block;
-  width: 100%;
-  padding: 1rem;
-  border: 0;
-  border-radius: 1rem;
-  background: #f7f1df;
-  color: #07140f;
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
-}
-
-.match + .match {
-  margin-top: 0.75rem;
-}
-
-.match-kickoff,
-.match-draft-status {
-  display: block;
-  margin-top: 0.45rem;
-  font-weight: 800;
-}
-
-.match-draft-status {
-  color: #17623d;
-}
-
-.match-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-top: 0.8rem;
-}
-
-.match-actions button,
 .draft-lobby button {
   padding: 0.55rem 0.8rem;
   border: 0;
@@ -102,20 +62,13 @@ h3 {
   color: #f7f1df;
   cursor: pointer;
   font: inherit;
+  font-size: 1rem;
   font-weight: 900;
 }
 
-.match-actions button:disabled,
 .draft-lobby button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.match-teams {
-  display: block;
-  margin-top: 0.5rem;
-  font-size: 1.6rem;
-  font-weight: 800;
 }
 
 .draft-top,

@@ -18,7 +18,7 @@ describe('Passkey login', () => {
     cy.wait('@helloApi').its('response.statusCode').should('equal', 200);
     cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
-    cy.testGet('api-greeting').should('contain.text', 'Hello from FarmersLeague API');
+    cy.testGet('api-greeting').should('contain.text', 'Welcome back, Alice');
     cy.testGet('match-teams').should('contain.text', 'Canada vs Mexico');
     cy.testGet('no-access').should('not.exist');
   });
@@ -35,7 +35,7 @@ describe('Passkey login', () => {
     cy.wait('@helloApi').its('response.statusCode').should('equal', 200);
     cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
-    cy.testGet('api-greeting').should('contain.text', 'Hello from FarmersLeague API');
+    cy.testGet('api-greeting').should('contain.text', 'Welcome back, Bob');
     cy.testGet('match-teams').should('contain.text', 'Canada vs Mexico');
     cy.testGet('no-access').should('not.exist');
   });
