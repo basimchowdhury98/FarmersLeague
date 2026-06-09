@@ -17,10 +17,23 @@
         <h2 id="matches-heading">Mocked Match Feed</h2>
 
         @for (match of matches(); track match.id) {
-          <button class="match" type="button" data-test="match-card" (click)="openDraft(match)">
+          <article class="match" data-test="match-card" (click)="openDraft(match)">
             <span class="league" data-test="match-league">{{ match.league }}</span>
             <span class="match-teams" data-test="match-teams">{{ match.homeTeam }} vs {{ match.awayTeam }}</span>
-          </button>
+            <span class="match-kickoff" data-test="match-kickoff">Kickoff {{ kickoffText(match) }}</span>
+            <span class="match-draft-status" data-test="match-draft-status">{{ matchDraftStatus(match) }}</span>
+            <span class="match-actions">
+              @if (canCreateDraft(match)) {
+                <button type="button" data-test="create-draft-button" (click)="createDraft(match, $event)">Create draft</button>
+              }
+              @if (canJoinDraft(match)) {
+                <button type="button" data-test="join-draft-button" (click)="joinDraft(match, $event)">Join draft</button>
+              }
+              @if (canCancelDraft(match)) {
+                <button type="button" data-test="cancel-draft-button" (click)="cancelDraft(match, $event)">Cancel draft</button>
+              }
+            </span>
+          </article>
         } @empty {
           <p data-test="matches-loading">Loading mocked matches...</p>
         }
@@ -33,10 +46,25 @@
           <p class="intro" data-test="draft-status">
             @if (draftState.isComplete) {
               Draft complete
+            } @else if (draftState.status === 'open') {
+              Draft open
+            } @else if (draftState.status === 'started') {
+              Draft in progress
             } @else {
               Draft {{ maxPicksPerUser }} starters per user.
             }
           </p>
+          @if (draftState.status === 'open') {
+            <div class="draft-lobby">
+              <p data-test="draft-joined-users">Joined: {{ draftState.joinedUsers.join(', ') }}</p>
+              @if (draftState.joinedUsers.length < 2) {
+                <p class="draft-warning" data-test="draft-start-warning">Starting a draft requires at least two joined users.</p>
+              }
+              @if (draftState.joinedUsers.includes(userName())) {
+                <button type="button" data-test="start-draft-button" [disabled]="draftState.joinedUsers.length < 2" (click)="startDraft()">Start draft</button>
+              }
+            </div>
+          }
         </div>
 
       </section>
@@ -50,8 +78,18 @@
           <span class="muted-label">Your picks</span>
           <strong>{{ userPickCount() }}/{{ maxPicksPerUser }}</strong>
         </div>
+        @if (draftState.draftOrder.length > 0) {
+          <div class="draft-order-wrap" data-test="draft-order">
+            <span class="muted-label">Draft order</span>
+            <ol class="draft-order">
+              @for (draftUser of draftState.draftOrder; track draftUser) {
+                <li data-test="draft-order-user">{{ draftUser }}</li>
+              }
+            </ol>
+          </div>
+        }
         @let draftTurns = remainingTurns(draftState);
-        @if (draftTurns.length > 0) {
+        @if (draftState.status === 'started' && draftTurns.length > 0) {
           <div class="draft-turn-queue-wrap" data-test="draft-turn-queue" aria-label="Remaining draft turns">
             <span class="muted-label">Remaining turns</span>
             <ol class="draft-turn-queue">
@@ -127,7 +165,7 @@
       }
 
       <section class="draft-summary" data-test="draft-summary" aria-label="Draft summary">
-        @for (draftUser of draftState.draftOrder; track draftUser) {
+        @for (draftUser of (draftState.draftOrder.length > 0 ? draftState.draftOrder : draftState.joinedUsers); track draftUser) {
           <article class="manager-picks" [attr.data-test]="'draft-picks-' + draftUser">
             <h3>{{ draftUser }}</h3>
             <ol>

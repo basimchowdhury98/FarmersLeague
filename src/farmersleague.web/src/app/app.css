@@ -71,6 +71,46 @@ h3 {
   text-align: left;
 }
 
+.match + .match {
+  margin-top: 0.75rem;
+}
+
+.match-kickoff,
+.match-draft-status {
+  display: block;
+  margin-top: 0.45rem;
+  font-weight: 800;
+}
+
+.match-draft-status {
+  color: #17623d;
+}
+
+.match-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.match-actions button,
+.draft-lobby button {
+  padding: 0.55rem 0.8rem;
+  border: 0;
+  border-radius: 999px;
+  background: #07140f;
+  color: #f7f1df;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+}
+
+.match-actions button:disabled,
+.draft-lobby button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .match-teams {
   display: block;
   margin-top: 0.5rem;
@@ -82,6 +122,21 @@ h3 {
 .draft-title-block {
   display: grid;
   gap: 0.65rem;
+}
+
+.draft-lobby {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 36rem;
+}
+
+.draft-lobby p {
+  margin: 0;
+}
+
+.draft-warning {
+  color: #ffe2df;
+  font-weight: 900;
 }
 
 .draft-title-block h1 {
@@ -123,6 +178,26 @@ h3 {
   padding: 0.75rem;
   border-radius: 0.9rem;
   background: rgb(255 255 255 / 8%);
+}
+
+.draft-order-wrap {
+  grid-column: 1 / -1;
+}
+
+.draft-order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.draft-order li {
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  background: rgb(247 241 223 / 12%);
+  font-weight: 900;
 }
 
 .draft-turn-queue-wrap::after {

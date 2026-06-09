@@ -12,6 +12,8 @@ type MatchResponse = {
   league: string;
   date: string;
   lineups: LineupResponse[];
+  draft?: DraftResponse | null;
+  hasStarted?: boolean;
 };
 
 type LineupResponse = {
@@ -36,6 +38,8 @@ type AccessResponse = {
 
 type DraftResponse = {
   match: MatchResponse;
+  status: 'open' | 'started' | 'completed';
+  joinedUsers: string[];
   draftOrder: string[];
   picks: DraftPick[];
   currentTurn: string | null;
@@ -143,6 +147,79 @@ export class App {
     window.location.href = `/${this.passkey()}/matches/${match.id}/draft`;
   }
 
+  protected createDraft(match: MatchResponse, event?: Event) {
+    event?.stopPropagation();
+    this.http.post<DraftResponse>(`/api/drafts/${match.id}`, { passkey: this.passkey() }).subscribe(() => {
+      this.openDraft(match);
+    });
+  }
+
+  protected joinDraft(match: MatchResponse, event?: Event) {
+    event?.stopPropagation();
+    this.http.post<DraftResponse>(`/api/drafts/${match.id}/join`, { passkey: this.passkey() }).subscribe(() => {
+      this.openDraft(match);
+    });
+  }
+
+  protected cancelDraft(match: MatchResponse, event?: Event) {
+    event?.stopPropagation();
+    this.http.delete(`/api/drafts/${match.id}?passkey=${encodeURIComponent(this.passkey())}`).subscribe(() => {
+      this.loadHomePage();
+    });
+  }
+
+  protected startDraft() {
+    const draft = this.draft();
+    if (!draft) {
+      return;
+    }
+
+    this.draftError.set('');
+    this.http.post<DraftResponse>(`/api/drafts/${draft.match.id}/start`, { passkey: this.passkey() }).subscribe({
+      next: (response) => this.applyDraftUpdate(response),
+      error: (error) => {
+        const response = error.error as DraftPickErrorResponse | undefined;
+        this.draftError.set(response?.message ?? 'Unable to start draft');
+      }
+    });
+  }
+
+  protected matchDraftStatus(match: MatchResponse) {
+    if (this.hasMatchStarted(match)) {
+      return 'Match started';
+    }
+
+    if (!match.draft) {
+      return '';
+    }
+
+    if (match.draft.isComplete || match.draft.status === 'completed') {
+      return 'Draft complete';
+    }
+
+    return match.draft.status === 'open' ? 'Draft open' : 'Draft in progress';
+  }
+
+  protected canCreateDraft(match: MatchResponse) {
+    return !this.hasMatchStarted(match) && !match.draft;
+  }
+
+  protected canJoinDraft(match: MatchResponse) {
+    return !this.hasMatchStarted(match) && match.draft?.status === 'open' && !match.draft.joinedUsers.includes(this.userName());
+  }
+
+  protected canCancelDraft(match: MatchResponse) {
+    return !this.hasMatchStarted(match) && !!match.draft && !match.draft.isComplete && match.draft.status !== 'completed';
+  }
+
+  protected hasMatchStarted(match: MatchResponse) {
+    return match.hasStarted === true || new Date(match.date).getTime() <= Date.now();
+  }
+
+  protected kickoffText(match: MatchResponse) {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(match.date));
+  }
+
   protected draftPlayer(playerName: string) {
     const draft = this.draft();
     if (!draft) {
@@ -224,6 +301,7 @@ export class App {
     return (
       !draft ||
       draft.isComplete ||
+      draft.status !== 'started' ||
       draft.currentTurn !== this.userName() ||
       this.draftedBy(playerName) !== null ||
       this.userPickCount() >= maxPicksPerUser
@@ -235,7 +313,7 @@ export class App {
   }
 
   private loadDraft(matchId: number) {
-    this.http.get<DraftResponse>(`/api/drafts/${matchId}`).subscribe((response) => {
+    this.http.get<DraftResponse>(`/api/drafts/${matchId}?passkey=${encodeURIComponent(this.passkey())}`).subscribe((response) => {
       this.draft.set(response);
       this.connectDraftLiveUpdates(matchId);
     });
