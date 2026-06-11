@@ -5,7 +5,7 @@ SHELL := /bin/bash
 CYPRESS_ACCEPTANCE_SPECS := cypress/e2e/acceptance/**/*.cy.js
 
 run:
-	docker compose up --build
+	APP_BUILD_TARGET=prod docker compose up --build app redis
 
 val:
 	set -e; \

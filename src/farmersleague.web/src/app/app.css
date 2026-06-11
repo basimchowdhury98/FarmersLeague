@@ -48,6 +48,51 @@ h3 {
   color: rgb(247 241 223 / 78%);
 }
 
+.scoreboard-tabs,
+.upcoming-date-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.scoreboard-tabs button,
+.upcoming-date-pager button {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(247 241 223 / 76%);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+}
+
+.scoreboard-tabs button.active-tab {
+  border-color: #b8e986;
+  background: #b8e986;
+  color: #07140f;
+}
+
+.upcoming-date-pager {
+  justify-content: space-between;
+  margin: 0.75rem 0 1rem;
+  padding: 0.65rem;
+  border: 1px solid rgb(184 233 134 / 18%);
+  border-radius: 1rem;
+  background: rgb(7 20 15 / 48%);
+}
+
+.upcoming-date-pager span {
+  color: #fff;
+  font-weight: 950;
+}
+
+.upcoming-date-pager button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .manager-picks {
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 1.25rem;

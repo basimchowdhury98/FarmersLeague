@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.WebSockets;
 using System.Net.Http.Json;
 using System.Text;
@@ -17,6 +18,14 @@ builder.Services.AddHttpClient("FootballApi", client =>
 {
     var baseUrl = builder.Configuration["FootballApi:BaseUrl"] ?? "http://localhost:5081";
     client.BaseAddress = new Uri(baseUrl);
+});
+builder.Services.AddHttpClient("SofaScore", client =>
+{
+    var baseUrl = builder.Configuration["SofaScore:BaseUrl"] ?? "https://api.sofascore.com/api/v1";
+    client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : $"{baseUrl}/");
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36");
+    client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+    client.DefaultRequestHeaders.Referrer = new Uri("https://www.sofascore.com/");
 });
 
 builder.Services.AddStackExchangeRedisCache(options =>
@@ -45,9 +54,9 @@ app.MapGet("/api/access/{passkey}", async (string passkey, IDistributedCache cac
         : Results.Ok(new AccessResponse(true, userName));
 });
 
-app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var match = await GetMatch(matchId, httpClientFactory, cancellationToken);
+    var match = await GetMatch(matchId, httpClientFactory, configuration, cancellationToken);
     if (match is null)
     {
         return Results.NotFound();
@@ -64,9 +73,9 @@ app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, IHt
     return Results.Ok(ToDraftResponse(match, draft));
 });
 
-app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftLifecycleRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftLifecycleRequest request, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, configuration, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -78,9 +87,9 @@ app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftLifecycleReque
     return Results.Ok(response);
 });
 
-app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftLifecycleRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftLifecycleRequest request, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, configuration, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -107,9 +116,9 @@ app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftLifecycle
     return Results.Ok(response);
 });
 
-app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftLifecycleRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftLifecycleRequest request, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, configuration, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -147,9 +156,9 @@ app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftLifecycl
     return Results.Ok(response);
 });
 
-app.MapDelete("/api/drafts/{matchId:int}", async (int matchId, string passkey, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapDelete("/api/drafts/{matchId:int}", async (int matchId, string passkey, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, configuration, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -167,7 +176,7 @@ app.MapDelete("/api/drafts/{matchId:int}", async (int matchId, string passkey, I
     return Results.NoContent();
 });
 
-app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext context, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext context, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
     {
@@ -178,6 +187,7 @@ app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext con
         context.Request.Query["passkey"].ToString(),
         matchId,
         httpClientFactory,
+        configuration,
         cache,
         cancellationToken);
     if (draftContext.Error is not null)
@@ -212,9 +222,9 @@ app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext con
     return Results.Empty;
 });
 
-app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetDraftContext(request.Passkey, matchId, httpClientFactory, configuration, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -265,9 +275,9 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     return Results.Ok(updatedResponse);
 });
 
-app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var matches = await GetMatches(httpClientFactory, cancellationToken);
+    var matches = await GetMatches(httpClientFactory, configuration, cancellationToken);
     var responses = new List<HomeMatchResponse>();
 
     foreach (var match in matches)
@@ -312,24 +322,73 @@ static string UserPasskeyCacheKey(string passkey) => $"users:passkeys:{passkey}"
 
 static string DraftCacheKey(int matchId) => $"drafts:{matchId}";
 
-static async Task<IReadOnlyList<MatchResponse>> GetMatches(IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
+static async Task<IReadOnlyList<MatchResponse>> GetMatches(IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
+{
+    var providerName = configuration["MatchProvider:Name"] ?? "Mock";
+
+    return string.Equals(providerName, "SofaScore", StringComparison.OrdinalIgnoreCase)
+        ? await GetSofaScoreMatches(httpClientFactory, configuration, cancellationToken)
+        : await GetMockFootballApiMatches(httpClientFactory, cancellationToken);
+}
+
+static async Task<IReadOnlyList<MatchResponse>> GetMockFootballApiMatches(IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
 {
     var footballApi = httpClientFactory.CreateClient("FootballApi");
     var fixtures = await footballApi.GetFromJsonAsync<ApiFootballFixturesResponse>(
         "/v3/fixtures?league=1&season=2026",
         cancellationToken);
 
-    return fixtures?.Response.Select(ToMatchResponse).ToArray() ?? [];
+    return fixtures?.Response.Select(ToApiFootballMatchResponse).ToArray() ?? [];
 }
 
-static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
+static async Task<IReadOnlyList<MatchResponse>> GetSofaScoreMatches(IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
 {
-    var matches = await GetMatches(httpClientFactory, cancellationToken);
+    var sofaScore = httpClientFactory.CreateClient("SofaScore");
+    var tournamentId = configuration.GetValue("SofaScore:WorldCupTournamentId", 16);
+    var seasonId = configuration.GetValue("SofaScore:WorldCup2026SeasonId", 58210);
+    var maxPages = configuration.GetValue("SofaScore:MaxFixturePages", 10);
+    var matches = new Dictionary<int, MatchResponse>();
+
+    for (var page = 0; page < maxPages; page++)
+    {
+        using var httpResponse = await sofaScore.GetAsync(
+            $"unique-tournament/{tournamentId}/season/{seasonId}/events/next/{page}",
+            cancellationToken);
+        if (httpResponse.StatusCode == HttpStatusCode.NotFound)
+        {
+            break;
+        }
+
+        httpResponse.EnsureSuccessStatusCode();
+        var response = await httpResponse.Content.ReadFromJsonAsync<SofaScoreEventsResponse>(cancellationToken);
+        var events = response?.Events ?? [];
+
+        if (events.Count == 0)
+        {
+            break;
+        }
+
+        foreach (var sofaScoreEvent in events)
+        {
+            var match = ToSofaScoreMatchResponse(sofaScoreEvent);
+            if (match is not null)
+            {
+                matches.TryAdd(match.Id, match);
+            }
+        }
+    }
+
+    return matches.Values.OrderBy(match => match.Date).ToArray();
+}
+
+static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
+{
+    var matches = await GetMatches(httpClientFactory, configuration, cancellationToken);
 
     return matches.FirstOrDefault(match => match.Id == matchId);
 }
 
-static async Task<DraftContextResult> GetDraftContext(string passkey, int matchId, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken)
+static async Task<DraftContextResult> GetDraftContext(string passkey, int matchId, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, CancellationToken cancellationToken)
 {
     var userName = await cache.GetStringAsync(UserPasskeyCacheKey(passkey), cancellationToken);
     if (userName is null)
@@ -337,7 +396,7 @@ static async Task<DraftContextResult> GetDraftContext(string passkey, int matchI
         return new DraftContextResult(null, null, Results.NotFound(new DraftPickErrorResponse("No access")));
     }
 
-    var match = await GetMatch(matchId, httpClientFactory, cancellationToken);
+    var match = await GetMatch(matchId, httpClientFactory, configuration, cancellationToken);
     if (match is null)
     {
         return new DraftContextResult(userName, null, Results.NotFound(new DraftPickErrorResponse("Match not found")));
@@ -346,9 +405,9 @@ static async Task<DraftContextResult> GetDraftContext(string passkey, int matchI
     return new DraftContextResult(userName, match, null);
 }
 
-static async Task<DraftContextResult> GetUpcomingDraftContext(string passkey, int matchId, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken)
+static async Task<DraftContextResult> GetUpcomingDraftContext(string passkey, int matchId, IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, CancellationToken cancellationToken)
 {
-    var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, configuration, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext;
@@ -441,13 +500,33 @@ static string? GetCurrentTurn(DraftState draft)
     return null;
 }
 
-static MatchResponse ToMatchResponse(ApiFootballFixtureItem fixture) => new(
+static MatchResponse ToApiFootballMatchResponse(ApiFootballFixtureItem fixture) => new(
     fixture.Fixture.Id,
     fixture.Teams.Home.Name,
     fixture.Teams.Away.Name,
     fixture.League.Name,
     fixture.Fixture.Date,
     fixture.Lineups.Select(ToLineupResponse).ToArray());
+
+static MatchResponse? ToSofaScoreMatchResponse(SofaScoreEvent sofaScoreEvent)
+{
+    if (sofaScoreEvent.HomeTeam is null || sofaScoreEvent.AwayTeam is null || sofaScoreEvent.StartTimestamp is null)
+    {
+        return null;
+    }
+
+    var league = sofaScoreEvent.Tournament?.Name
+        ?? sofaScoreEvent.Tournament?.UniqueTournament?.Name
+        ?? "FIFA World Cup";
+
+    return new MatchResponse(
+        sofaScoreEvent.Id,
+        sofaScoreEvent.HomeTeam.Name,
+        sofaScoreEvent.AwayTeam.Name,
+        league,
+        DateTimeOffset.FromUnixTimeSeconds(sofaScoreEvent.StartTimestamp.Value),
+        []);
+}
 
 static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? draft) => new(
     match.Id,
@@ -551,6 +630,16 @@ record ApiFootballLineup(ApiFootballTeam Team, string Formation, IReadOnlyList<A
 record ApiFootballStarter(ApiFootballPlayer Player);
 
 record ApiFootballPlayer(string Name, int? Number, string? Pos, string? Grid);
+
+record SofaScoreEventsResponse(IReadOnlyList<SofaScoreEvent> Events);
+
+record SofaScoreEvent(int Id, long? StartTimestamp, SofaScoreTeam? HomeTeam, SofaScoreTeam? AwayTeam, SofaScoreTournament? Tournament);
+
+record SofaScoreTeam(string Name);
+
+record SofaScoreTournament(string? Name, SofaScoreUniqueTournament? UniqueTournament);
+
+record SofaScoreUniqueTournament(string? Name);
 
 class LiveDraftConnections
 {

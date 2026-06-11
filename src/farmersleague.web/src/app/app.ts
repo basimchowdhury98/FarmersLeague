@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http';
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 
 type HelloResponse = {
   message: string;
@@ -67,6 +67,8 @@ type DraftPickFlight = {
   deltaY: number;
 };
 
+type MatchFeedTab = 'past' | 'today' | 'upcoming';
+
 const maxPicksPerUser = 3;
 const draftPickFlightDurationMs = 850;
 const draftedHighlightDurationMs = 1100;
@@ -81,6 +83,22 @@ export class App {
   protected readonly maxPicksPerUser = maxPicksPerUser;
   protected readonly hello = signal('Loading API greeting...');
   protected readonly matches = signal<MatchResponse[]>([]);
+  protected readonly matchesLoaded = signal(false);
+  protected readonly matchFeedTab = signal<MatchFeedTab>('upcoming');
+  protected readonly upcomingDateIndex = signal(0);
+  protected readonly upcomingDateKeys = computed(() => this.uniqueDateKeys(this.upcomingMatches()));
+  protected readonly visibleMatches = computed(() => {
+    if (this.matchFeedTab() === 'past') {
+      return this.pastMatches();
+    }
+
+    if (this.matchFeedTab() === 'today') {
+      return this.todayMatches();
+    }
+
+    const dateKey = this.activeUpcomingDateKey();
+    return dateKey ? this.upcomingMatches().filter((match) => this.matchDateKey(match) === dateKey) : [];
+  });
   protected readonly draft = signal<DraftResponse | null>(null);
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
@@ -140,7 +158,80 @@ export class App {
 
     this.http.get<MatchResponse[]>('/api/matches').subscribe((response) => {
       this.matches.set(response);
+      this.matchesLoaded.set(true);
+      this.selectDefaultMatchFeedTab();
     });
+  }
+
+  private selectDefaultMatchFeedTab() {
+    if (this.upcomingMatches().length > 0) {
+      this.matchFeedTab.set('upcoming');
+      this.upcomingDateIndex.set(0);
+      return;
+    }
+
+    if (this.todayMatches().length > 0) {
+      this.matchFeedTab.set('today');
+      return;
+    }
+
+    this.matchFeedTab.set('past');
+  }
+
+  protected setMatchFeedTab(tab: MatchFeedTab) {
+    this.matchFeedTab.set(tab);
+    if (tab === 'upcoming') {
+      this.upcomingDateIndex.set(Math.min(this.upcomingDateIndex(), Math.max(this.upcomingDateKeys().length - 1, 0)));
+    }
+  }
+
+  protected showPreviousUpcomingDate() {
+    this.upcomingDateIndex.set(Math.max(this.upcomingDateIndex() - 1, 0));
+  }
+
+  protected showNextUpcomingDate() {
+    this.upcomingDateIndex.set(Math.min(this.upcomingDateIndex() + 1, Math.max(this.upcomingDateKeys().length - 1, 0)));
+  }
+
+  protected activeUpcomingDateText() {
+    const dateKey = this.activeUpcomingDateKey();
+    return dateKey ? this.dateKeyText(dateKey) : 'No upcoming dates';
+  }
+
+  protected canShowPreviousUpcomingDate() {
+    return this.upcomingDateIndex() > 0;
+  }
+
+  protected canShowNextUpcomingDate() {
+    return this.upcomingDateIndex() < this.upcomingDateKeys().length - 1;
+  }
+
+  protected matchFeedTitle() {
+    if (this.matchFeedTab() === 'past') {
+      return 'Past Games';
+    }
+
+    if (this.matchFeedTab() === 'today') {
+      return 'Today\'s Games';
+    }
+
+    return `Upcoming Games · ${this.activeUpcomingDateText()}`;
+  }
+
+  protected matchFeedEmptyText() {
+    if (!this.matchesLoaded()) {
+      return 'Loading matches...';
+    }
+
+    if (this.matchFeedTab() === 'past') {
+      return 'No past matches yet.';
+    }
+
+    if (this.matchFeedTab() === 'today') {
+      return 'No matches today.';
+    }
+
+    return 'No upcoming matches.';
   }
 
   protected openDraft(match: MatchResponse) {
@@ -228,6 +319,18 @@ export class App {
     return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(match.date));
   }
 
+  protected matchFeedTabLabel() {
+    if (this.matchFeedTab() === 'past') {
+      return 'Past';
+    }
+
+    if (this.matchFeedTab() === 'today') {
+      return 'Today';
+    }
+
+    return 'Upcoming';
+  }
+
   protected teamInitials(teamName: string) {
     return teamName
       .split(/\s+/)
@@ -235,6 +338,50 @@ export class App {
       .slice(0, 2)
       .map((word) => word[0]?.toUpperCase() ?? '')
       .join('');
+  }
+
+  private pastMatches() {
+    const todayKey = this.dateKey(new Date());
+    return this.matches()
+      .filter((match) => this.matchDateKey(match) < todayKey)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }
+
+  private todayMatches() {
+    const todayKey = this.dateKey(new Date());
+    return this.matches()
+      .filter((match) => this.matchDateKey(match) === todayKey)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
+
+  private upcomingMatches() {
+    const todayKey = this.dateKey(new Date());
+    return this.matches()
+      .filter((match) => this.matchDateKey(match) > todayKey)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
+
+  private activeUpcomingDateKey() {
+    return this.upcomingDateKeys()[this.upcomingDateIndex()] ?? null;
+  }
+
+  private uniqueDateKeys(matches: MatchResponse[]) {
+    return [...new Set(matches.map((match) => this.matchDateKey(match)))];
+  }
+
+  private matchDateKey(match: MatchResponse) {
+    return this.dateKey(new Date(match.date));
+  }
+
+  private dateKey(date: Date) {
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${date.getFullYear()}-${month}-${day}`;
+  }
+
+  private dateKeyText(dateKey: string) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(year, month - 1, day));
   }
 
   protected draftPlayer(playerName: string) {

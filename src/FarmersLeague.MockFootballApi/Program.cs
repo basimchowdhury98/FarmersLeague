@@ -7,6 +7,7 @@ app.MapGet("/v3/fixtures", (int? league, int? season) =>
 {
     var canada = Team(50, "Canada");
     var mexico = Team(42, "Mexico");
+    var kickoff = DateTimeOffset.UtcNow.Date.AddDays(1).AddTicks(-1);
 
     return Results.Ok(new
     {
@@ -20,7 +21,7 @@ app.MapGet("/v3/fixtures", (int? league, int? season) =>
                 fixture = new
                 {
                     id = 1001,
-                    date = "2026-06-11T20:00:00+00:00"
+                    date = kickoff
                 },
                 league = new
                 {

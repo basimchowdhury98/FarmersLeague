@@ -35,6 +35,8 @@ EXPOSE 8080
 ENTRYPOINT ["dotnet", "FarmersLeague.Api.dll"]
 
 FROM app-base AS test
+ENV MatchProvider__Name=Mock
 ENV FootballApi__BaseUrl=http://mock-football-api:8080
 
 FROM app-base AS prod
+ENV MatchProvider__Name=SofaScore

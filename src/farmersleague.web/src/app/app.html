@@ -10,7 +10,7 @@
       <section class="scoreboard" aria-labelledby="matches-heading">
         <div class="scoreboard-topbar">
           <div>
-            <p class="scoreboard-clock">Today</p>
+            <p class="scoreboard-clock">{{ matchFeedTabLabel() }}</p>
             <h1 id="matches-heading">FarmersLeague</h1>
           </div>
           <div class="scoreboard-user-pill">
@@ -22,17 +22,43 @@
         <p class="scoreboard-greeting" data-test="api-greeting">{{ homeGreeting() }}</p>
 
         <nav class="scoreboard-tabs" aria-label="Match feed filters">
-          <span>Yesterday</span>
-          <strong>Today</strong>
-          <span>Upcoming</span>
+          <button
+            type="button"
+            data-test="past-matches-tab"
+            [class.active-tab]="matchFeedTab() === 'past'"
+            [attr.aria-current]="matchFeedTab() === 'past' ? 'page' : null"
+            (click)="setMatchFeedTab('past')"
+          >Past</button>
+          <button
+            type="button"
+            data-test="today-matches-tab"
+            [class.active-tab]="matchFeedTab() === 'today'"
+            [attr.aria-current]="matchFeedTab() === 'today' ? 'page' : null"
+            (click)="setMatchFeedTab('today')"
+          >Today</button>
+          <button
+            type="button"
+            data-test="upcoming-matches-tab"
+            [class.active-tab]="matchFeedTab() === 'upcoming'"
+            [attr.aria-current]="matchFeedTab() === 'upcoming' ? 'page' : null"
+            (click)="setMatchFeedTab('upcoming')"
+          >Upcoming</button>
         </nav>
 
         <div class="scoreboard-section-title">
-          <span>Upcoming Games</span>
-          <span>{{ matches().length }} listed</span>
+          <span>{{ matchFeedTitle() }}</span>
+          <span>{{ visibleMatches().length }} listed</span>
         </div>
 
-        @for (match of matches(); track match.id) {
+        @if (matchFeedTab() === 'upcoming' && upcomingDateKeys().length > 1) {
+          <div class="upcoming-date-pager" data-test="upcoming-date-pager" aria-label="Upcoming match dates">
+            <button type="button" data-test="previous-upcoming-date" [disabled]="!canShowPreviousUpcomingDate()" (click)="showPreviousUpcomingDate()">Previous date</button>
+            <span data-test="active-upcoming-date">{{ activeUpcomingDateText() }}</span>
+            <button type="button" data-test="next-upcoming-date" [disabled]="!canShowNextUpcomingDate()" (click)="showNextUpcomingDate()">Next date</button>
+          </div>
+        }
+
+        @for (match of visibleMatches(); track match.id) {
           <article class="match" data-test="match-card" (click)="openDraft(match)">
             <span class="league" data-test="match-league">{{ match.league }}</span>
             <span class="team-side team-side-home">
@@ -65,7 +91,7 @@
             </span>
           </article>
         } @empty {
-          <p class="matches-loading" data-test="matches-loading">Loading mocked matches...</p>
+          <p class="matches-loading" data-test="matches-loading">{{ matchFeedEmptyText() }}</p>
         }
       </section>
     } @else if (draft(); as draftState) {

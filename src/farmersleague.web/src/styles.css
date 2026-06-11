@@ -216,11 +216,10 @@
 }
 
 .match-teams {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  grid-column: 1 / -1;
+  color: rgb(247 241 223 / 54%);
+  font-size: 0.68rem;
+  font-weight: 850;
 }
 
 .matches-loading {
