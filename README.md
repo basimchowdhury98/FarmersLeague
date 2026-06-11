@@ -6,7 +6,7 @@ Minimal shell for a World Cup friends league app.
 
 - .NET API serving the production Angular app
 - Angular web UI
-- API-Football-compatible mock API for local testing
+- SofaScore-compatible mock API for local testing
 - Cypress e2e test
 - Docker/Render-ready app image
 
@@ -29,7 +29,7 @@ make val
 ## Services
 
 - App: `http://localhost:8080`
-- Mock API: `http://localhost:5081/v3/fixtures?league=1&season=2026`
+- Mock API: `http://localhost:5081/api/v1/unique-tournament/16/season/58210/events/next/0`
 
 ## Render
 

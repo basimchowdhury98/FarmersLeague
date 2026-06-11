@@ -36,7 +36,7 @@ ENTRYPOINT ["dotnet", "FarmersLeague.Api.dll"]
 
 FROM app-base AS test
 ENV MatchProvider__Name=Mock
-ENV FootballApi__BaseUrl=http://mock-football-api:8080
+ENV MockSofaScore__BaseUrl=http://mock-football-api:8080/api/v1
 
 FROM app-base AS prod
 ENV MatchProvider__Name=SofaScore

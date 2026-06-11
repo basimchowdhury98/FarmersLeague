@@ -15,7 +15,7 @@ val:
 	trap 'docker compose down' EXIT; \
 	docker compose up --build -d; \
 	until curl -fsS http://localhost:8080/api/hello >/dev/null 2>&1; do sleep 1; done; \
-	until curl -fsS "http://localhost:5081/v3/fixtures?league=1&season=2026" >/dev/null 2>&1; do sleep 1; done; \
+	until curl -fsS "http://localhost:5081/api/v1/unique-tournament/16/season/58210/events/next/0" >/dev/null 2>&1; do sleep 1; done; \
 	mkdir -p tests/e2e/cypress/e2e/acceptance; \
 	cp .agile/acceptance/*.cy.js tests/e2e/cypress/e2e/acceptance/; \
 	if [ -f tests/e2e/package-lock.json ]; then npm --prefix tests/e2e ci; else npm --prefix tests/e2e install; fi; \

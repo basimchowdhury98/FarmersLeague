@@ -5,8 +5,8 @@ describe('FarmersLeague shell', () => {
   // WHEN Alice opens the FarmersLeague shell using her valid passkey URL
   // THEN the UI shows data loaded through the API and mock football API
   it('loads UI data through the API and mock football API', () => {
-    cy.request(`${Cypress.env('mockApiUrl')}/v3/fixtures?league=1&season=2026`)
-      .its('body.response.0.teams.home.name')
+    cy.request(`${Cypress.env('mockApiUrl')}/api/v1/unique-tournament/16/season/58210/events/next/0`)
+      .its('body.events.0.homeTeam.name')
       .should('equal', 'Canada');
 
     cy.intercept('GET', '/api/hello').as('helloApi');

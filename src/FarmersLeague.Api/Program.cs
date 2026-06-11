@@ -15,10 +15,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = AppJson.Options.PropertyNamingPolicy;
 });
 
-builder.Services.AddHttpClient("FootballApi", client =>
+builder.Services.AddHttpClient("MockSofaScore", client =>
 {
-    var baseUrl = builder.Configuration["FootballApi:BaseUrl"] ?? "http://localhost:5081";
-    client.BaseAddress = new Uri(baseUrl);
+    var baseUrl = builder.Configuration["MockSofaScore:BaseUrl"] ?? "http://localhost:5081/api/v1";
+    client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : $"{baseUrl}/");
 });
 builder.Services.AddHttpClient("SofaScore", client =>
 {
@@ -346,25 +346,16 @@ static string DraftCacheKey(int matchId) => $"drafts:{matchId}";
 static async Task<IReadOnlyList<MatchResponse>> GetMatches(IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
 {
     var providerName = configuration["MatchProvider:Name"] ?? "Mock";
+    var clientName = string.Equals(providerName, "SofaScore", StringComparison.OrdinalIgnoreCase)
+        ? "SofaScore"
+        : "MockSofaScore";
+    var sofaScore = httpClientFactory.CreateClient(clientName);
 
-    return string.Equals(providerName, "SofaScore", StringComparison.OrdinalIgnoreCase)
-        ? await GetSofaScoreMatches(httpClientFactory, configuration, cancellationToken)
-        : await GetMockFootballApiMatches(httpClientFactory, cancellationToken);
+    return await GetSofaScoreMatches(sofaScore, configuration, cancellationToken);
 }
 
-static async Task<IReadOnlyList<MatchResponse>> GetMockFootballApiMatches(IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
+static async Task<IReadOnlyList<MatchResponse>> GetSofaScoreMatches(HttpClient sofaScore, IConfiguration configuration, CancellationToken cancellationToken)
 {
-    var footballApi = httpClientFactory.CreateClient("FootballApi");
-    var fixtures = await footballApi.GetFromJsonAsync<ApiFootballFixturesResponse>(
-        "/v3/fixtures?league=1&season=2026",
-        cancellationToken);
-
-    return fixtures?.Response.Select(ToApiFootballMatchResponse).ToArray() ?? [];
-}
-
-static async Task<IReadOnlyList<MatchResponse>> GetSofaScoreMatches(IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
-{
-    var sofaScore = httpClientFactory.CreateClient("SofaScore");
     var tournamentId = configuration.GetValue("SofaScore:WorldCupTournamentId", 16);
     var seasonId = configuration.GetValue("SofaScore:WorldCup2026SeasonId", 58210);
     var maxPages = configuration.GetValue("SofaScore:MaxFixturePages", 10);
@@ -394,12 +385,42 @@ static async Task<IReadOnlyList<MatchResponse>> GetSofaScoreMatches(IHttpClientF
             var match = ToSofaScoreMatchResponse(sofaScoreEvent);
             if (match is not null)
             {
+                var lineups = await GetSofaScoreLineups(sofaScore, sofaScoreEvent.Id, match.HomeTeam, match.AwayTeam, cancellationToken);
+                match = match with { Lineups = lineups };
                 matches.TryAdd(match.Id, match);
             }
         }
     }
 
     return matches.Values.OrderBy(match => match.Date).ToArray();
+}
+
+static async Task<IReadOnlyList<LineupResponse>> GetSofaScoreLineups(HttpClient sofaScore, int eventId, string homeTeamName, string awayTeamName, CancellationToken cancellationToken)
+{
+    using var httpResponse = await sofaScore.GetAsync($"event/{eventId}/lineups", cancellationToken);
+    if (httpResponse.StatusCode == HttpStatusCode.NotFound)
+    {
+        return [];
+    }
+
+    httpResponse.EnsureSuccessStatusCode();
+    var response = await httpResponse.Content.ReadFromJsonAsync<SofaScoreLineupsResponse>(cancellationToken);
+    if (response is null)
+    {
+        return [];
+    }
+
+    var lineups = new List<LineupResponse>();
+    if (response.Home is not null)
+    {
+        lineups.Add(ToSofaScoreLineupResponse(homeTeamName, response.Home));
+    }
+    if (response.Away is not null)
+    {
+        lineups.Add(ToSofaScoreLineupResponse(awayTeamName, response.Away));
+    }
+
+    return lineups;
 }
 
 static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
@@ -525,14 +546,6 @@ static string? GetCurrentTurn(DraftState draft)
     return null;
 }
 
-static MatchResponse ToApiFootballMatchResponse(ApiFootballFixtureItem fixture) => new(
-    fixture.Fixture.Id,
-    fixture.Teams.Home.Name,
-    fixture.Teams.Away.Name,
-    fixture.League.Name,
-    fixture.Fixture.Date,
-    fixture.Lineups.Select(ToLineupResponse).ToArray());
-
 static MatchResponse? ToSofaScoreMatchResponse(SofaScoreEvent sofaScoreEvent)
 {
     if (sofaScoreEvent.HomeTeam is null || sofaScoreEvent.AwayTeam is null || sofaScoreEvent.StartTimestamp is null)
@@ -553,33 +566,59 @@ static MatchResponse? ToSofaScoreMatchResponse(SofaScoreEvent sofaScoreEvent)
         []);
 }
 
-static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? draft) => new(
-    match.Id,
-    match.HomeTeam,
-    match.AwayTeam,
-    match.League,
-    match.Date,
-    match.Lineups,
-    draft is null ? null : ToDraftResponse(match, draft),
-    HasMatchStarted(match));
-
-static LineupResponse ToLineupResponse(ApiFootballLineup lineup) => new(
-    lineup.Team.Name,
-    lineup.Formation,
-    lineup.StartXI?.Select(ToStarterResponse).ToArray() ?? [],
-    lineup.Substitutes?.Select(ToStarterResponse).ToArray() ?? []);
-
-static StarterResponse ToStarterResponse(ApiFootballStarter starter)
+static LineupResponse ToSofaScoreLineupResponse(string teamName, SofaScoreTeamLineup lineup)
 {
-    var (gridRow, gridColumn) = ParseGrid(starter.Player.Grid);
+    var starters = (lineup.Players ?? []).Where(player => !player.Substitute).ToArray();
+
+    return new LineupResponse(
+        teamName,
+        lineup.Formation ?? string.Empty,
+        starters.Select((player, index) => ToSofaScoreStarterResponse(player, FormationGrid(lineup.Formation, index))).ToArray(),
+        (lineup.Players ?? []).Where(player => player.Substitute).Select(player => ToSofaScoreStarterResponse(player, null)).ToArray());
+}
+
+static StarterResponse ToSofaScoreStarterResponse(SofaScoreLineupPlayer starter, string? grid)
+{
+    var (gridRow, gridColumn) = ParseGrid(grid);
 
     return new StarterResponse(
-        starter.Player.Name,
-        starter.Player.Number,
-        starter.Player.Pos,
-        starter.Player.Grid,
-        gridRow,
-        gridColumn);
+    starter.Player?.Name ?? string.Empty,
+    StarterNumber(starter),
+    starter.Position ?? starter.Player?.Position,
+    grid,
+    gridRow,
+    gridColumn);
+}
+
+static string? FormationGrid(string? formation, int starterIndex)
+{
+    if (starterIndex == 0)
+    {
+        return "1:1";
+    }
+
+    var rows = formation?
+        .Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Select(part => int.TryParse(part, out var playerCount) ? playerCount : 0)
+        .Where(playerCount => playerCount > 0)
+        .ToArray();
+    if (rows is null || rows.Length == 0)
+    {
+        return null;
+    }
+
+    var offset = starterIndex - 1;
+    for (var rowIndex = 0; rowIndex < rows.Length; rowIndex++)
+    {
+        if (offset < rows[rowIndex])
+        {
+            return $"{rowIndex + 2}:{offset + 1}";
+        }
+
+        offset -= rows[rowIndex];
+    }
+
+    return null;
 }
 
 static (int? Row, int? Column) ParseGrid(string? grid)
@@ -594,6 +633,28 @@ static (int? Row, int? Column) ParseGrid(string? grid)
         ? (row, column)
         : (null, null);
 }
+
+static int? StarterNumber(SofaScoreLineupPlayer starter)
+{
+    if (starter.ShirtNumber is not null)
+    {
+        return starter.ShirtNumber;
+    }
+
+    var jerseyNumber = starter.JerseyNumber ?? starter.Player?.JerseyNumber;
+
+    return int.TryParse(jerseyNumber, out var number) ? number : null;
+}
+
+static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? draft) => new(
+    match.Id,
+    match.HomeTeam,
+    match.AwayTeam,
+    match.League,
+    match.Date,
+    match.Lineups,
+    draft is null ? null : ToDraftResponse(match, draft),
+    HasMatchStarted(match));
 
 static TestUser[] SeededUsers() =>
 [
@@ -639,24 +700,6 @@ record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterRe
 
 record StarterResponse(string Name, int? Number, string? Position, string? Grid, int? GridRow, int? GridColumn);
 
-record ApiFootballFixturesResponse(IReadOnlyList<ApiFootballFixtureItem> Response);
-
-record ApiFootballFixtureItem(ApiFootballFixture Fixture, ApiFootballLeague League, ApiFootballTeams Teams, IReadOnlyList<ApiFootballLineup> Lineups);
-
-record ApiFootballFixture(int Id, DateTimeOffset Date);
-
-record ApiFootballLeague(string Name);
-
-record ApiFootballTeams(ApiFootballTeam Home, ApiFootballTeam Away);
-
-record ApiFootballTeam(string Name);
-
-record ApiFootballLineup(ApiFootballTeam Team, string Formation, IReadOnlyList<ApiFootballStarter>? StartXI, IReadOnlyList<ApiFootballStarter>? Substitutes);
-
-record ApiFootballStarter(ApiFootballPlayer Player);
-
-record ApiFootballPlayer(string Name, int? Number, string? Pos, string? Grid);
-
 record SofaScoreEventsResponse(IReadOnlyList<SofaScoreEvent> Events);
 
 record SofaScoreEvent(int Id, long? StartTimestamp, SofaScoreTeam? HomeTeam, SofaScoreTeam? AwayTeam, SofaScoreTournament? Tournament);
@@ -666,6 +709,14 @@ record SofaScoreTeam(string Name);
 record SofaScoreTournament(string? Name, SofaScoreUniqueTournament? UniqueTournament);
 
 record SofaScoreUniqueTournament(string? Name);
+
+record SofaScoreLineupsResponse(bool Confirmed, SofaScoreTeamLineup? Home, SofaScoreTeamLineup? Away);
+
+record SofaScoreTeamLineup(string? Formation, IReadOnlyList<SofaScoreLineupPlayer>? Players);
+
+record SofaScoreLineupPlayer(SofaScorePlayer? Player, int? ShirtNumber, string? JerseyNumber, string? Position, bool Substitute);
+
+record SofaScorePlayer(string Name, string? Position, string? JerseyNumber);
 
 class LiveDraftConnections
 {

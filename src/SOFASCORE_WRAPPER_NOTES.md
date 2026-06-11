@@ -27,7 +27,7 @@ Reasons:
 - This scraper API package is already Node/Newman-based.
 - Direct SofaScore calls avoid Python subprocess or microservice complexity.
 - ScraperFC source confirms the underlying endpoints we need.
-- We still need to transform responses into the API-Football-compatible spec ourselves.
+- We still need to normalize SofaScore responses into the app's match and draft response models.
 
 ## Auth
 

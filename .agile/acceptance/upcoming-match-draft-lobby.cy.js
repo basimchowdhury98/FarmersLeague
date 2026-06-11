@@ -59,6 +59,44 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('draft-joined-users').should('contain.text', 'Alice');
   });
 
+  // GIVEN an upcoming match has starting lineups but no full bench confirmed
+  // WHEN Alice views the match on her passkey-scoped home page
+  // THEN she cannot create or open a draft for that match yet
+  it('hides draft creation until starting lineups and full benches are confirmed', () => {
+    const starters = Array.from({ length: 11 }, (_, index) => ({
+      name: `Starter ${index + 1}`,
+      number: index + 1,
+      position: null,
+      grid: null,
+      gridRow: null,
+      gridColumn: null
+    }));
+
+    cy.intercept('GET', '/api/matches', [{
+      id: matchId,
+      homeTeam: 'Canada',
+      awayTeam: 'Mexico',
+      league: 'FIFA World Cup',
+      date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      lineups: [
+        { teamName: 'Canada', formation: '4-3-3', starters, bench: [] },
+        { teamName: 'Mexico', formation: '4-3-3', starters, bench: [] }
+      ],
+      draft: null,
+      hasStarted: false
+    }]);
+
+    cy.visit(`/${alicePasskey}`);
+
+    matchCard().within(() => {
+      cy.testGet('create-draft-button').should('not.exist');
+      cy.testGet('join-draft-button').should('not.exist');
+      cy.testGet('match-draft-status').should('contain.text', 'No draft yet');
+    });
+    matchCard().click();
+    cy.location('pathname').should('equal', `/${alicePasskey}`);
+  });
+
   // GIVEN Alice has created a draft for an upcoming match
   // WHEN Bob visits his passkey-scoped home page
   // THEN Bob sees that match marked Draft open with a Join draft button
