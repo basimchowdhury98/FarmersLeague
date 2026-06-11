@@ -1,11 +1,14 @@
 SHELL := /bin/bash
 
-.PHONY: run val down
+.PHONY: run mock val down
 
 CYPRESS_ACCEPTANCE_SPECS := cypress/e2e/acceptance/**/*.cy.js
 
 run:
 	APP_BUILD_TARGET=prod docker compose up --build app redis
+
+mock:
+	APP_BUILD_TARGET=test docker compose up --build app mock-football-api redis
 
 val:
 	set -e; \
