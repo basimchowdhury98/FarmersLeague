@@ -48,6 +48,22 @@ app.MapGet("/v3/fixtures", (int? league, int? season) =>
                         Starter("Jonathan David", 10, "F", "4:2"),
                         Starter("Cyle Larin", 17, "F", "4:3"),
                         Starter("Stephen Eustáquio", 7, "D", "2:4")
+                    ], [
+                        Starter("Maxime Crépeau", 16, "G", null),
+                        Starter("Thomas McGill", 18, "G", null),
+                        Starter("Luc de Fougerolles", 3, "D", null),
+                        Starter("Moïse Bombito", 5, "D", null),
+                        Starter("Richie Laryea", 22, "D", null),
+                        Starter("Ali Ahmed", 20, "D", null),
+                        Starter("Samuel Piette", 6, "M", null),
+                        Starter("Mathieu Choinière", 13, "M", null),
+                        Starter("Liam Millar", 23, "M", null),
+                        Starter("Jacob Shaffelburg", 14, "M", null),
+                        Starter("Thelonius Bair", 24, "F", null),
+                        Starter("Iké Ugbo", 12, "F", null),
+                        Starter("Tani Oluwaseyi", 25, "F", null),
+                        Starter("Junior Hoilett", 11, "F", null),
+                        Starter("Joel Waterman", 26, "D", null)
                     ]),
                     Lineup(mexico, "4-3-3", [
                         Starter("Raúl Rangel", 1, "G", "1:1"),
@@ -61,6 +77,22 @@ app.MapGet("/v3/fixtures", (int? league, int? season) =>
                         Starter("Julián Quiñones", 9, "F", "4:1"),
                         Starter("Raúl Jiménez", 11, "F", "4:2"),
                         Starter("Roberto Alvarado", 25, "F", "4:3")
+                    ], [
+                        Starter("Luis Malagón", 12, "G", null),
+                        Starter("Julio González", 13, "G", null),
+                        Starter("Gerardo Arteaga", 6, "D", null),
+                        Starter("Jorge Sánchez", 19, "D", null),
+                        Starter("Jesús Orozco", 4, "D", null),
+                        Starter("Luis Romo", 7, "M", null),
+                        Starter("Edson Álvarez", 14, "M", null),
+                        Starter("Erick Sánchez", 16, "M", null),
+                        Starter("Carlos Rodríguez", 8, "M", null),
+                        Starter("Alexis Vega", 10, "F", null),
+                        Starter("Uriel Antuna", 15, "F", null),
+                        Starter("Santiago Giménez", 20, "F", null),
+                        Starter("Henry Martín", 21, "F", null),
+                        Starter("César Huerta", 22, "F", null),
+                        Starter("Marcelo Flores", 24, "M", null)
                     ])
                 }
             }
@@ -72,9 +104,9 @@ app.Run();
 
 static object Team(int id, string name) => new { id, name };
 
-static MockStarter Starter(string name, int number, string position, string grid) => new(name, number, position, grid);
+static MockStarter Starter(string name, int number, string position, string? grid) => new(name, number, position, grid);
 
-static object Lineup(object team, string formation, MockStarter[] starters) => new
+static object Lineup(object team, string formation, MockStarter[] starters, MockStarter[] substitutes) => new
 {
     team,
     formation,
@@ -87,7 +119,17 @@ static object Lineup(object team, string formation, MockStarter[] starters) => n
                             pos = starter.Position,
                             grid = starter.Grid
                         }
+                    }),
+    substitutes = substitutes.Select(starter => new
+                    {
+                        player = new
+                        {
+                            name = starter.Name,
+                            number = starter.Number,
+                            pos = starter.Position,
+                            grid = starter.Grid
+                        }
                     })
 };
 
-record MockStarter(string Name, int Number, string Position, string Grid);
+record MockStarter(string Name, int Number, string Position, string? Grid);

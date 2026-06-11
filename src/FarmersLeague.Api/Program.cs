@@ -8,6 +8,7 @@ using Microsoft.Extensions.Caching.Distributed;
 
 var builder = WebApplication.CreateBuilder(args);
 const int MaxPicksPerUser = 3;
+const int FullBenchPlayerCount = 15;
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -65,6 +66,11 @@ app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, IHt
     var draft = await GetDraft(matchId, cache, cancellationToken);
     if (draft is null)
     {
+        if (!HasConfirmedFullSquads(match))
+        {
+            return Results.BadRequest(new DraftPickErrorResponse("Starting lineups and full benches are not confirmed"));
+        }
+
         var userName = passkey is null ? null : await cache.GetStringAsync(UserPasskeyCacheKey(passkey), cancellationToken);
         draft = NewOpenDraftState(userName is null ? [] : [userName]);
         await SaveDraft(matchId, draft, cache, cancellationToken);
@@ -81,6 +87,11 @@ app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftLifecycleReque
         return draftContext.Error;
     }
 
+    if (!HasConfirmedFullSquads(draftContext.Match!))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Starting lineups and full benches are not confirmed"));
+    }
+
     var draft = NewOpenDraftState([draftContext.UserName!]);
     var response = await SaveAndBroadcastDraft(matchId, draftContext.Match!, draft, cache, liveDraftConnections, cancellationToken);
 
@@ -93,6 +104,11 @@ app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftLifecycle
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
+    }
+
+    if (!HasConfirmedFullSquads(draftContext.Match!))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Starting lineups and full benches are not confirmed"));
     }
 
     var draft = await GetDraft(matchId, cache, cancellationToken);
@@ -122,6 +138,11 @@ app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftLifecycl
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
+    }
+
+    if (!HasConfirmedFullSquads(draftContext.Match!))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Starting lineups and full benches are not confirmed"));
     }
 
     var draft = await GetDraft(matchId, cache, cancellationToken);
@@ -477,6 +498,10 @@ static bool IsDraftComplete(DraftState draft) => draft.DraftOrder.Count > 0 && d
 
 static bool HasMatchStarted(MatchResponse match) => match.Date <= DateTimeOffset.UtcNow;
 
+static bool HasConfirmedFullSquads(MatchResponse match) =>
+    match.Lineups.Count >= 2
+    && match.Lineups.All(lineup => lineup.Starters.Count == 11 && lineup.Bench.Count == FullBenchPlayerCount);
+
 static bool HasPlayerInMatch(MatchResponse match, string playerName) =>
     match.Lineups.SelectMany(lineup => lineup.Starters).Any(starter => string.Equals(starter.Name, playerName, StringComparison.Ordinal));
 
@@ -541,7 +566,8 @@ static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? dr
 static LineupResponse ToLineupResponse(ApiFootballLineup lineup) => new(
     lineup.Team.Name,
     lineup.Formation,
-    lineup.StartXI.Select(ToStarterResponse).ToArray());
+    lineup.StartXI?.Select(ToStarterResponse).ToArray() ?? [],
+    lineup.Substitutes?.Select(ToStarterResponse).ToArray() ?? []);
 
 static StarterResponse ToStarterResponse(ApiFootballStarter starter)
 {
@@ -609,7 +635,7 @@ record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, Da
 
 record HomeMatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups, DraftResponse? Draft, bool HasStarted);
 
-record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterResponse> Starters);
+record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterResponse> Starters, IReadOnlyList<StarterResponse> Bench);
 
 record StarterResponse(string Name, int? Number, string? Position, string? Grid, int? GridRow, int? GridColumn);
 
@@ -625,7 +651,7 @@ record ApiFootballTeams(ApiFootballTeam Home, ApiFootballTeam Away);
 
 record ApiFootballTeam(string Name);
 
-record ApiFootballLineup(ApiFootballTeam Team, string Formation, IReadOnlyList<ApiFootballStarter> StartXI);
+record ApiFootballLineup(ApiFootballTeam Team, string Formation, IReadOnlyList<ApiFootballStarter>? StartXI, IReadOnlyList<ApiFootballStarter>? Substitutes);
 
 record ApiFootballStarter(ApiFootballPlayer Player);
 
