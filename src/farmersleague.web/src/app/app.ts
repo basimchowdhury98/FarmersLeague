@@ -1,78 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
-
-type HelloResponse = {
-  message: string;
-};
-
-type MatchResponse = {
-  id: number;
-  homeTeam: string;
-  awayTeam: string;
-  league: string;
-  date: string;
-  lineups: LineupResponse[];
-  draft?: DraftResponse | null;
-  hasStarted?: boolean;
-};
-
-type LineupResponse = {
-  teamName: string;
-  formation: string;
-  starters: StarterResponse[];
-  bench: StarterResponse[];
-};
-
-type StarterResponse = {
-  name: string;
-  number: number | null;
-  position: string | null;
-  grid: string | null;
-  gridRow: number | null;
-  gridColumn: number | null;
-};
-
-type AccessResponse = {
-  hasAccess: boolean;
-  userName: string;
-};
-
-type DraftResponse = {
-  match: MatchResponse;
-  status: 'open' | 'started' | 'completed';
-  joinedUsers: string[];
-  draftOrder: string[];
-  picks: DraftPick[];
-  currentTurn: string | null;
-  isComplete: boolean;
-};
-
-type DraftPick = {
-  userName: string;
-  playerName: string;
-};
-
-type DraftPickErrorResponse = {
-  message: string;
-};
-
-type DraftPickFlight = {
-  id: number;
-  userName: string;
-  playerName: string;
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  deltaX: number;
-  deltaY: number;
-};
-
-type MatchFeedTab = 'past' | 'today' | 'upcoming';
-
-const maxPicksPerUser = 3;
-const draftPickFlightDurationMs = 850;
-const draftedHighlightDurationMs = 1100;
+import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
+import { AccessResponse, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, MatchFeedTab, MatchResponse, StarterResponse } from './models';
 
 @Component({
   selector: 'app-root',
@@ -314,6 +243,19 @@ export class App {
 
   protected canOpenDraft(match: MatchResponse) {
     return !this.hasMatchStarted(match) || !!match.draft;
+  }
+
+  protected hasConfirmedFullSquads(match: MatchResponse) {
+    return match.lineups.length >= 2
+      && match.lineups.every((lineup) => lineup.starters.length === startingPlayerCount && lineup.bench.length === fullBenchPlayerCount);
+  }
+
+  protected lineupUnavailableMessage() {
+    return lineupUnavailableMessage;
+  }
+
+  protected canStartDraft(draft: DraftResponse) {
+    return draft.joinedUsers.length >= 2 && this.hasConfirmedFullSquads(draft.match);
   }
 
   protected kickoffText(match: MatchResponse) {

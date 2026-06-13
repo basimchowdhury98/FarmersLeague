@@ -1,43 +1,96 @@
 /**
- * As a logged-in FarmersLeague user, I want to see upcoming matches on my user home page and manage each match's draft
- * before kickoff, so that users can create and join a draft lobby before someone starts and closes it for drafting.
+ * As a logged-in FarmersLeague user, I want to see upcoming matches on my user home page, create or join draft lobbies before
+ * lineups are available, and block starting drafts until confirmed lineups exist, so that the lobby can form early while
+ * preventing drafts without the required player pool.
  */
 describe('Upcoming match draft lobby', () => {
   const alicePasskey = '11111111-1111-1111-1111-111111111111';
   const bobPasskey = '22222222-2222-2222-2222-222222222222';
   const carolPasskey = '33333333-3333-3333-3333-333333333333';
   const fullBenchPlayerCount = 15;
+  const lineupUnavailableMessage = 'No lineup available yet. Draft can\'t start until the starting lineup is available.';
 
   let match;
+  let noLineupMatch;
   let matchLabel;
+  let noLineupMatchLabel;
   let alicePlayers;
   let bobPlayers;
   let completedPicks;
 
   const loadDraftableMatch = () => {
-    cy.request('/api/matches').then(({ body }) => {
-      match = body.find((candidate) => (
+    return cy.request('/api/matches').then(({ body }) => {
+      const upcomingMatches = body.filter((candidate) => (
         new Date(candidate.date).getTime() > Date.now()
       ));
 
-      expect(match, 'upcoming scraper match').to.exist;
-      matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
+      const findDraftableMatch = (remainingMatches) => {
+        expect(remainingMatches, 'upcoming scraper matches').to.have.length.greaterThan(0);
+        const [candidate, ...rest] = remainingMatches;
 
-      cy.request(`/api/drafts/${match.id}?passkey=${alicePasskey}`).then(({ body: draft }) => {
-        expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
-        expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)).to.equal(true);
+        return cy.request({
+          url: `/api/drafts/${candidate.id}?passkey=${alicePasskey}`,
+          failOnStatusCode: false
+        }).then((response) => {
+          const lineups = response.body?.match?.lineups ?? [];
+          const hasFullLineups = response.status === 200
+            && lineups.length === 2
+            && lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount);
 
-        alicePlayers = draft.match.lineups[0].starters.slice(0, 3).map((player) => player.name);
-        bobPlayers = draft.match.lineups[1].starters.slice(0, 3).map((player) => player.name);
-        completedPicks = [
-          { userName: 'Alice', playerName: alicePlayers[0] },
-          { userName: 'Bob', playerName: bobPlayers[0] },
-          { userName: 'Alice', playerName: alicePlayers[1] },
-          { userName: 'Bob', playerName: bobPlayers[1] },
-          { userName: 'Alice', playerName: alicePlayers[2] },
-          { userName: 'Bob', playerName: bobPlayers[2] }
-        ];
-      });
+          if (!hasFullLineups) {
+            return findDraftableMatch(rest);
+          }
+
+          match = candidate;
+          matchLabel = `${candidate.homeTeam} vs ${candidate.awayTeam}`;
+          alicePlayers = lineups[0].starters.slice(0, 3).map((player) => player.name);
+          bobPlayers = lineups[1].starters.slice(0, 3).map((player) => player.name);
+          completedPicks = [
+            { userName: 'Alice', playerName: alicePlayers[0] },
+            { userName: 'Bob', playerName: bobPlayers[0] },
+            { userName: 'Alice', playerName: alicePlayers[1] },
+            { userName: 'Bob', playerName: bobPlayers[1] },
+            { userName: 'Alice', playerName: alicePlayers[2] },
+            { userName: 'Bob', playerName: bobPlayers[2] }
+          ];
+        });
+      };
+
+      return findDraftableMatch(upcomingMatches);
+    });
+  };
+
+  const loadNoLineupMatch = () => {
+    return cy.request('/api/matches').then(({ body }) => {
+      const upcomingMatches = body.filter((candidate) => (
+        new Date(candidate.date).getTime() > Date.now()
+      ));
+
+      const findNoLineupMatch = (remainingMatches) => {
+        expect(remainingMatches, 'upcoming scraper matches').to.have.length.greaterThan(0);
+        const [candidate, ...rest] = remainingMatches;
+
+        return cy.request({
+          url: `/api/drafts/${candidate.id}?passkey=${alicePasskey}`,
+          failOnStatusCode: false
+        }).then((response) => {
+          if (response.status === 200 && response.body.match?.lineups?.length === 0) {
+            noLineupMatch = candidate;
+            noLineupMatchLabel = `${candidate.homeTeam} vs ${candidate.awayTeam}`;
+            return;
+          }
+
+          if (response.status === 404) {
+            noLineupMatch = candidate;
+            noLineupMatchLabel = `${candidate.homeTeam} vs ${candidate.awayTeam}`;
+            return;
+          }
+
+          return findNoLineupMatch(rest);
+        });
+      };
+
+      return findNoLineupMatch(upcomingMatches);
     });
   };
 
@@ -47,7 +100,14 @@ describe('Upcoming match draft lobby', () => {
       .should('equal', 204);
   };
 
+  const setNoLineupDraft = (draftState) => {
+    cy.request('PUT', `/api/testing/drafts/${noLineupMatch.id}`, draftState)
+      .its('status')
+      .should('equal', 204);
+  };
+
   const matchCard = () => cy.contains('[data-test="match-card"]', matchLabel);
+  const noLineupMatchCard = () => cy.contains('[data-test="match-card"]', noLineupMatchLabel);
 
   const createDraftFromHome = () => {
     cy.visit(`/${alicePasskey}`);
@@ -94,6 +154,24 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
+  // GIVEN a logged-in user is on the home page and an upcoming match has no draft yet, even though its lineup is unavailable
+  // WHEN the user clicks that match's Create draft button
+  // THEN they are taken to that match's draft page with the draft open and themselves joined
+  it('creates a draft for an upcoming match before lineups are available', () => {
+    loadNoLineupMatch()
+      .then(() => {
+        cy.request('DELETE', `/api/testing/drafts/${noLineupMatch.id}`).its('status').should('equal', 204);
+
+        cy.visit(`/${alicePasskey}`);
+        noLineupMatchCard().within(() => cy.testGet('create-draft-button').click());
+
+        cy.location('pathname').should('equal', `/${alicePasskey}/matches/${noLineupMatch.id}/draft`);
+        cy.testGet('draft-page').should('be.visible');
+        cy.testGet('draft-status').should('contain.text', 'Draft open');
+        cy.testGet('draft-joined-users').should('contain.text', 'Alice');
+      });
+  });
+
   it('shows Bob an open draft with a join action after Alice creates it', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
 
@@ -136,6 +214,84 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('draft-status').should('contain.text', 'Draft open');
     cy.testGet('draft-joined-users').should('contain.text', 'Alice').and('contain.text', 'Bob');
     cy.testGet('start-draft-button').should('be.visible').and('not.be.disabled');
+  });
+
+  // GIVEN an open draft has at least two joined users and the scraper returns starting 11 plus bench for both teams
+  // WHEN a joined user opens the draft page
+  // THEN the Start draft button is enabled and the starting 11 players are shown as draftable
+  it('enables starting a draft when enough users have joined and lineups are available', () => {
+    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+
+    cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
+
+    cy.testGet('start-draft-button').should('be.visible').and('not.be.disabled');
+    cy.get('[data-test="draft-player"]').should('have.length', 22);
+  });
+
+  // GIVEN an open draft has at least two joined users but the scraper returns 404 for that match's lineup
+  // WHEN a joined user opens the draft page
+  // THEN a lineup-unavailable banner explains that the draft cannot start until the starting lineup is available and Start draft is disabled
+  it('blocks starting a draft when the lineup is unavailable', () => {
+    loadNoLineupMatch()
+      .then(() => {
+        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+
+        cy.visit(`/${alicePasskey}/matches/${noLineupMatch.id}/draft`);
+
+        cy.testGet('lineup-unavailable-banner').should('be.visible').and('contain.text', lineupUnavailableMessage);
+        cy.testGet('draft-start-warning').should('not.exist');
+        cy.testGet('start-draft-button').should('be.disabled');
+      });
+  });
+
+  // GIVEN an open draft has only one joined user and the scraper returns 404 for that match's lineup
+  // WHEN that joined user opens the draft page
+  // THEN both the lineup-unavailable banner and the existing at-least-two-users warning are visible, and Start draft is disabled
+  it('shows both lineup and minimum-player warnings when both requirements are unmet', () => {
+    loadNoLineupMatch()
+      .then(() => {
+        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+
+        cy.visit(`/${alicePasskey}/matches/${noLineupMatch.id}/draft`);
+
+        cy.testGet('lineup-unavailable-banner').should('be.visible').and('contain.text', lineupUnavailableMessage);
+        cy.testGet('draft-start-warning').should('be.visible').and('contain.text', 'at least two');
+        cy.testGet('start-draft-button').should('be.disabled');
+      });
+  });
+
+  // GIVEN an open draft exists for a match whose lineup is unavailable
+  // WHEN another logged-in user opens the home page
+  // THEN they can still join the draft lobby
+  it('allows users to join a draft lobby before lineups are available', () => {
+    loadNoLineupMatch()
+      .then(() => {
+        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+
+        cy.visit(`/${bobPasskey}`);
+        noLineupMatchCard().within(() => cy.testGet('join-draft-button').click());
+
+        cy.location('pathname').should('equal', `/${bobPasskey}/matches/${noLineupMatch.id}/draft`);
+        cy.testGet('draft-page').should('be.visible');
+        cy.testGet('draft-status').should('contain.text', 'Draft open');
+        cy.testGet('draft-joined-users').should('contain.text', 'Alice').and('contain.text', 'Bob');
+      });
+  });
+
+  // GIVEN the scraper mock match has no lineup available
+  // WHEN a logged-in user opens that match's draft page
+  // THEN no draftable player list is shown
+  it('hides the draftable player list when the lineup is unavailable', () => {
+    loadNoLineupMatch()
+      .then(() => {
+        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+
+        cy.visit(`/${alicePasskey}/matches/${noLineupMatch.id}/draft`);
+
+        cy.testGet('lineup-unavailable-banner').should('be.visible');
+        cy.testGet('draft-player').should('not.exist');
+        cy.testGet('bench').should('not.exist');
+      });
   });
 
   it('starts an open draft, closes joining, and creates a draft order from joined users', () => {

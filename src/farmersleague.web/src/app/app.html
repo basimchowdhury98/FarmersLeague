@@ -116,8 +116,11 @@
               @if (draftState.joinedUsers.length < 2) {
                 <p class="draft-warning" data-test="draft-start-warning">Starting a draft requires at least two joined users.</p>
               }
+              @if (!hasConfirmedFullSquads(draftState.match)) {
+                <p class="draft-warning" data-test="lineup-unavailable-banner">{{ lineupUnavailableMessage() }}</p>
+              }
               @if (draftState.joinedUsers.includes(userName())) {
-                <button type="button" data-test="start-draft-button" [disabled]="draftState.joinedUsers.length < 2" (click)="startDraft()">Start draft</button>
+                <button type="button" data-test="start-draft-button" [disabled]="!canStartDraft(draftState)" (click)="startDraft()">Start draft</button>
               }
             </div>
           }

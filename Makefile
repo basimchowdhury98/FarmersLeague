@@ -1,8 +1,11 @@
 SHELL := /bin/bash
 
-.PHONY: run val down
+.PHONY: mock run val down
 
 CYPRESS_ACCEPTANCE_SPECS := cypress/e2e/acceptance/**/*.cy.js
+
+mock:
+	USE_SCRAPER_MOCK_MODE=true docker compose up --build -d
 
 run:
 	docker compose up --build app scraper redis
