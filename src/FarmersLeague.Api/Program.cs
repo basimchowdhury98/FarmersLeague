@@ -291,8 +291,7 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
 
 app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var includeLineups = bool.TryParse(configuration["WorldCupScraper:IncludeLineupsInMatchList"], out var configuredIncludeLineups) && configuredIncludeLineups;
-    var matches = await GetMatches(httpClientFactory, configuration, includeLineups, cancellationToken);
+    var matches = await GetMatches(httpClientFactory, configuration, includeLineups: false, cancellationToken);
     var responses = new List<HomeMatchResponse>();
 
     foreach (var match in matches)

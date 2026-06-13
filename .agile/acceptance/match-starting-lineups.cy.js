@@ -16,15 +16,19 @@ describe('Match draft page', () => {
   const loadDraftableMatch = () => {
     cy.request('/api/matches').then(({ body }) => {
       match = body.find((candidate) => (
-        candidate.lineups.length >= 2
-        && candidate.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)
-        && new Date(candidate.date).getTime() > Date.now()
+        new Date(candidate.date).getTime() > Date.now()
       ));
 
-      expect(match, 'draftable scraper match').to.exist;
+      expect(match, 'upcoming scraper match').to.exist;
       matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
-      homeStarters = match.lineups[0].starters.map((player) => player.name);
-      awayStarters = match.lineups[1].starters.map((player) => player.name);
+
+      cy.request(`/api/drafts/${match.id}?passkey=${alicePasskey}`).then(({ body: draft }) => {
+        expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
+        expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)).to.equal(true);
+
+        homeStarters = draft.match.lineups[0].starters.map((player) => player.name);
+        awayStarters = draft.match.lineups[1].starters.map((player) => player.name);
+      });
     });
   };
 

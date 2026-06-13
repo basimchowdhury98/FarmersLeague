@@ -71,7 +71,6 @@ type DraftPickFlight = {
 type MatchFeedTab = 'past' | 'today' | 'upcoming';
 
 const maxPicksPerUser = 3;
-const fullBenchPlayerCount = 15;
 const draftPickFlightDurationMs = 850;
 const draftedHighlightDurationMs = 1100;
 
@@ -298,11 +297,11 @@ export class App {
   }
 
   protected canCreateDraft(match: MatchResponse) {
-    return !this.hasMatchStarted(match) && this.hasConfirmedFullSquads(match) && !match.draft;
+    return !this.hasMatchStarted(match) && !match.draft;
   }
 
   protected canJoinDraft(match: MatchResponse) {
-    return !this.hasMatchStarted(match) && this.hasConfirmedFullSquads(match) && match.draft?.status === 'open' && !match.draft.joinedUsers.includes(this.userName());
+    return !this.hasMatchStarted(match) && match.draft?.status === 'open' && !match.draft.joinedUsers.includes(this.userName());
   }
 
   protected canCancelDraft(match: MatchResponse) {
@@ -313,12 +312,8 @@ export class App {
     return match.hasStarted === true || new Date(match.date).getTime() <= Date.now();
   }
 
-  protected hasConfirmedFullSquads(match: MatchResponse) {
-    return match.lineups.length >= 2 && match.lineups.every((lineup) => lineup.starters.length === 11 && (lineup.bench?.length ?? 0) === fullBenchPlayerCount);
-  }
-
   protected canOpenDraft(match: MatchResponse) {
-    return !!match.draft || this.hasConfirmedFullSquads(match);
+    return !this.hasMatchStarted(match) || !!match.draft;
   }
 
   protected kickoffText(match: MatchResponse) {

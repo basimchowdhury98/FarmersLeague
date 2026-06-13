@@ -17,23 +17,27 @@ describe('Upcoming match draft lobby', () => {
   const loadDraftableMatch = () => {
     cy.request('/api/matches').then(({ body }) => {
       match = body.find((candidate) => (
-        candidate.lineups.length >= 2
-        && candidate.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)
-        && new Date(candidate.date).getTime() > Date.now()
+        new Date(candidate.date).getTime() > Date.now()
       ));
 
-      expect(match, 'draftable scraper match').to.exist;
+      expect(match, 'upcoming scraper match').to.exist;
       matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
-      alicePlayers = match.lineups[0].starters.slice(0, 3).map((player) => player.name);
-      bobPlayers = match.lineups[1].starters.slice(0, 3).map((player) => player.name);
-      completedPicks = [
-        { userName: 'Alice', playerName: alicePlayers[0] },
-        { userName: 'Bob', playerName: bobPlayers[0] },
-        { userName: 'Alice', playerName: alicePlayers[1] },
-        { userName: 'Bob', playerName: bobPlayers[1] },
-        { userName: 'Alice', playerName: alicePlayers[2] },
-        { userName: 'Bob', playerName: bobPlayers[2] }
-      ];
+
+      cy.request(`/api/drafts/${match.id}?passkey=${alicePasskey}`).then(({ body: draft }) => {
+        expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
+        expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)).to.equal(true);
+
+        alicePlayers = draft.match.lineups[0].starters.slice(0, 3).map((player) => player.name);
+        bobPlayers = draft.match.lineups[1].starters.slice(0, 3).map((player) => player.name);
+        completedPicks = [
+          { userName: 'Alice', playerName: alicePlayers[0] },
+          { userName: 'Bob', playerName: bobPlayers[0] },
+          { userName: 'Alice', playerName: alicePlayers[1] },
+          { userName: 'Bob', playerName: bobPlayers[1] },
+          { userName: 'Alice', playerName: alicePlayers[2] },
+          { userName: 'Bob', playerName: bobPlayers[2] }
+        ];
+      });
     });
   };
 
@@ -73,22 +77,10 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('draft-joined-users').should('contain.text', 'Alice');
   });
 
-  it('hides draft creation until starting lineups and full benches are confirmed', () => {
-    const starters = Array.from({ length: 11 }, (_, index) => ({
-      name: `Starter ${index + 1}`,
-      number: index + 1,
-      position: null,
-      grid: null,
-      gridRow: null,
-      gridColumn: null
-    }));
-
+  it('shows draft creation without embedding lineups in the match list', () => {
     cy.intercept('GET', '/api/matches', [{
       ...match,
-      lineups: [
-        { teamName: match.homeTeam, formation: '4-3-3', starters, bench: [] },
-        { teamName: match.awayTeam, formation: '4-3-3', starters, bench: [] }
-      ],
+      lineups: [],
       draft: null,
       hasStarted: false
     }]);
@@ -96,12 +88,10 @@ describe('Upcoming match draft lobby', () => {
     cy.visit(`/${alicePasskey}`);
 
     matchCard().within(() => {
-      cy.testGet('create-draft-button').should('not.exist');
+      cy.testGet('create-draft-button').should('be.visible');
       cy.testGet('join-draft-button').should('not.exist');
       cy.testGet('match-draft-status').should('contain.text', 'No draft yet');
     });
-    matchCard().click();
-    cy.location('pathname').should('equal', `/${alicePasskey}`);
   });
 
   it('shows Bob an open draft with a join action after Alice creates it', () => {
