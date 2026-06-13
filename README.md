@@ -6,7 +6,7 @@ Minimal shell for a World Cup friends league app.
 
 - .NET API serving the production Angular app
 - Angular web UI
-- SofaScore-compatible mock API for local testing
+- FotMob-backed scraper API for World Cup data
 - Cypress e2e test
 - Docker/Render-ready app image
 
@@ -20,7 +20,7 @@ Open `http://localhost:8080`.
 
 ## Cypress
 
-To start the app with the mock API and run all Cypress tests:
+To start the app with the scraper API and run all Cypress tests:
 
 ```sh
 make val
@@ -29,7 +29,7 @@ make val
 ## Services
 
 - App: `http://localhost:8080`
-- Mock API: `http://localhost:5081/api/v1/unique-tournament/16/season/58210/events/next/0`
+- Scraper API: `http://localhost:5082/api/world-cup-2026/games`
 
 ## Render
 

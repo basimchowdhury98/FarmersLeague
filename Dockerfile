@@ -12,31 +12,25 @@ RUN dotnet restore src/FarmersLeague.Api/FarmersLeague.Api.csproj
 COPY src/FarmersLeague.Api/ src/FarmersLeague.Api/
 RUN dotnet publish src/FarmersLeague.Api/FarmersLeague.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS mock-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS scraper-build
 WORKDIR /app
-COPY src/FarmersLeague.MockFootballApi/FarmersLeague.MockFootballApi.csproj src/FarmersLeague.MockFootballApi/
-RUN dotnet restore src/FarmersLeague.MockFootballApi/FarmersLeague.MockFootballApi.csproj
-COPY src/FarmersLeague.MockFootballApi/ src/FarmersLeague.MockFootballApi/
-RUN dotnet publish src/FarmersLeague.MockFootballApi/FarmersLeague.MockFootballApi.csproj -c Release -o /app/mock-publish /p:UseAppHost=false
+COPY src/FarmersLeague.Scraper/FarmersLeague.Scraper.csproj src/FarmersLeague.Scraper/
+RUN dotnet restore src/FarmersLeague.Scraper/FarmersLeague.Scraper.csproj
+COPY src/FarmersLeague.Scraper/ src/FarmersLeague.Scraper/
+RUN dotnet publish src/FarmersLeague.Scraper/FarmersLeague.Scraper.csproj -c Release -o /app/scraper-publish /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS mock-runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS scraper-runtime
 WORKDIR /app
-COPY --from=mock-build /app/mock-publish ./
+COPY --from=scraper-build /app/scraper-publish ./
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "FarmersLeague.MockFootballApi.dll"]
+ENTRYPOINT ["dotnet", "FarmersLeague.Scraper.dll"]
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS app-base
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS app
 WORKDIR /app
 COPY --from=api-build /app/publish ./
 COPY --from=web-build /app/src/farmersleague.web/dist/farmersleague.web/browser ./wwwroot
 ENV ASPNETCORE_URLS=http://+:8080
+ENV WorldCupScraper__BaseUrl=http://scraper:8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "FarmersLeague.Api.dll"]
-
-FROM app-base AS test
-ENV MatchProvider__Name=Mock
-ENV MockSofaScore__BaseUrl=http://mock-football-api:8080/api/v1
-
-FROM app-base AS prod
-ENV MatchProvider__Name=SofaScore

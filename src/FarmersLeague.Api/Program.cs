@@ -15,18 +15,11 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.PropertyNamingPolicy = AppJson.Options.PropertyNamingPolicy;
 });
 
-builder.Services.AddHttpClient("MockSofaScore", client =>
+builder.Services.AddHttpClient("WorldCupScraper", client =>
 {
-    var baseUrl = builder.Configuration["MockSofaScore:BaseUrl"] ?? "http://localhost:5081/api/v1";
+    var baseUrl = builder.Configuration["WorldCupScraper:BaseUrl"] ?? "http://localhost:5082";
     client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : $"{baseUrl}/");
-});
-builder.Services.AddHttpClient("SofaScore", client =>
-{
-    var baseUrl = builder.Configuration["SofaScore:BaseUrl"] ?? "https://api.sofascore.com/api/v1";
-    client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : $"{baseUrl}/");
-    client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
-    client.DefaultRequestHeaders.Referrer = new Uri("https://www.sofascore.com/");
 });
 
 builder.Services.AddStackExchangeRedisCache(options =>
@@ -345,82 +338,47 @@ static string DraftCacheKey(int matchId) => $"drafts:{matchId}";
 
 static async Task<IReadOnlyList<MatchResponse>> GetMatches(IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
 {
-    var providerName = configuration["MatchProvider:Name"] ?? "Mock";
-    var clientName = string.Equals(providerName, "SofaScore", StringComparison.OrdinalIgnoreCase)
-        ? "SofaScore"
-        : "MockSofaScore";
-    var sofaScore = httpClientFactory.CreateClient(clientName);
+    var scraper = httpClientFactory.CreateClient("WorldCupScraper");
 
-    return await GetSofaScoreMatches(sofaScore, configuration, cancellationToken);
+    return await GetScraperMatches(scraper, cancellationToken);
 }
 
-static async Task<IReadOnlyList<MatchResponse>> GetSofaScoreMatches(HttpClient sofaScore, IConfiguration configuration, CancellationToken cancellationToken)
+static async Task<IReadOnlyList<MatchResponse>> GetScraperMatches(HttpClient scraper, CancellationToken cancellationToken)
 {
-    var tournamentId = configuration.GetValue("SofaScore:WorldCupTournamentId", 16);
-    var seasonId = configuration.GetValue("SofaScore:WorldCup2026SeasonId", 58210);
-    var maxPages = configuration.GetValue("SofaScore:MaxFixturePages", 10);
-    var matches = new Dictionary<int, MatchResponse>();
+    var games = await scraper.GetFromJsonAsync<IReadOnlyList<WorldCupGameResponse>>("api/world-cup-2026/games", AppJson.Options, cancellationToken) ?? [];
+    var matches = new List<MatchResponse>();
 
-    for (var page = 0; page < maxPages; page++)
+    foreach (var game in games)
     {
-        using var httpResponse = await sofaScore.GetAsync(
-            $"unique-tournament/{tournamentId}/season/{seasonId}/events/next/{page}",
-            cancellationToken);
-        if (httpResponse.StatusCode == HttpStatusCode.NotFound)
+        var match = ToScraperMatchResponse(game);
+        if (match is null)
         {
-            break;
+            continue;
         }
 
-        httpResponse.EnsureSuccessStatusCode();
-        var response = await httpResponse.Content.ReadFromJsonAsync<SofaScoreEventsResponse>(cancellationToken);
-        var events = response?.Events ?? [];
-
-        if (events.Count == 0)
-        {
-            break;
-        }
-
-        foreach (var sofaScoreEvent in events)
-        {
-            var match = ToSofaScoreMatchResponse(sofaScoreEvent);
-            if (match is not null)
-            {
-                var lineups = await GetSofaScoreLineups(sofaScore, sofaScoreEvent.Id, match.HomeTeam, match.AwayTeam, cancellationToken);
-                match = match with { Lineups = lineups };
-                matches.TryAdd(match.Id, match);
-            }
-        }
+        var lineups = await GetScraperLineups(scraper, game.Id, cancellationToken);
+        matches.Add(match with { Lineups = lineups });
     }
 
-    return matches.Values.OrderBy(match => match.Date).ToArray();
+    return matches.OrderBy(match => match.Date).ToArray();
 }
 
-static async Task<IReadOnlyList<LineupResponse>> GetSofaScoreLineups(HttpClient sofaScore, int eventId, string homeTeamName, string awayTeamName, CancellationToken cancellationToken)
+static async Task<IReadOnlyList<LineupResponse>> GetScraperLineups(HttpClient scraper, string gameId, CancellationToken cancellationToken)
 {
-    using var httpResponse = await sofaScore.GetAsync($"event/{eventId}/lineups", cancellationToken);
+    using var httpResponse = await scraper.GetAsync($"api/world-cup-2026/games/{gameId}/lineups", cancellationToken);
     if (httpResponse.StatusCode == HttpStatusCode.NotFound)
     {
         return [];
     }
 
     httpResponse.EnsureSuccessStatusCode();
-    var response = await httpResponse.Content.ReadFromJsonAsync<SofaScoreLineupsResponse>(cancellationToken);
+    var response = await httpResponse.Content.ReadFromJsonAsync<WorldCupLineupResponse>(AppJson.Options, cancellationToken);
     if (response is null)
     {
         return [];
     }
 
-    var lineups = new List<LineupResponse>();
-    if (response.Home is not null)
-    {
-        lineups.Add(ToSofaScoreLineupResponse(homeTeamName, response.Home));
-    }
-    if (response.Away is not null)
-    {
-        lineups.Add(ToSofaScoreLineupResponse(awayTeamName, response.Away));
-    }
-
-    return lineups;
+    return [ToScraperLineupResponse(response.HomeTeam), ToScraperLineupResponse(response.AwayTeam)];
 }
 
 static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
@@ -546,49 +504,43 @@ static string? GetCurrentTurn(DraftState draft)
     return null;
 }
 
-static MatchResponse? ToSofaScoreMatchResponse(SofaScoreEvent sofaScoreEvent)
+static MatchResponse? ToScraperMatchResponse(WorldCupGameResponse game)
 {
-    if (sofaScoreEvent.HomeTeam is null || sofaScoreEvent.AwayTeam is null || sofaScoreEvent.StartTimestamp is null)
+    if (!int.TryParse(game.Id, out var matchId))
     {
         return null;
     }
 
-    var league = sofaScoreEvent.Tournament?.Name
-        ?? sofaScoreEvent.Tournament?.UniqueTournament?.Name
-        ?? "FIFA World Cup";
-
     return new MatchResponse(
-        sofaScoreEvent.Id,
-        sofaScoreEvent.HomeTeam.Name,
-        sofaScoreEvent.AwayTeam.Name,
-        league,
-        DateTimeOffset.FromUnixTimeSeconds(sofaScoreEvent.StartTimestamp.Value),
+        matchId,
+        game.HomeTeam.Name,
+        game.AwayTeam.Name,
+        "FIFA World Cup",
+        game.StartTimeUtc,
         []);
 }
 
-static LineupResponse ToSofaScoreLineupResponse(string teamName, SofaScoreTeamLineup lineup)
-{
-    var starters = (lineup.Players ?? []).Where(player => !player.Substitute).ToArray();
+static LineupResponse ToScraperLineupResponse(WorldCupLineupTeamResponse lineup) => new(
+    lineup.Name,
+    lineup.Formation ?? string.Empty,
+    lineup.Starting11.Select((player, index) => ToScraperStarterResponse(player, FormationGrid(lineup.Formation, index))).ToArray(),
+    lineup.Bench.Select(player => ToScraperStarterResponse(player, null)).ToArray());
 
-    return new LineupResponse(
-        teamName,
-        lineup.Formation ?? string.Empty,
-        starters.Select((player, index) => ToSofaScoreStarterResponse(player, FormationGrid(lineup.Formation, index))).ToArray(),
-        (lineup.Players ?? []).Where(player => player.Substitute).Select(player => ToSofaScoreStarterResponse(player, null)).ToArray());
-}
-
-static StarterResponse ToSofaScoreStarterResponse(SofaScoreLineupPlayer starter, string? grid)
+static StarterResponse ToScraperStarterResponse(WorldCupLineupPlayerResponse player, string? grid)
 {
     var (gridRow, gridColumn) = ParseGrid(grid);
 
     return new StarterResponse(
-    starter.Player?.Name ?? string.Empty,
-    StarterNumber(starter),
-    starter.Position ?? starter.Player?.Position,
-    grid,
-    gridRow,
-    gridColumn);
+        player.Name,
+        player.ShirtNumber,
+        PlayerPosition(player),
+        grid,
+        gridRow,
+        gridColumn);
 }
+
+static string? PlayerPosition(WorldCupLineupPlayerResponse player) =>
+    player.PositionId?.ToString() ?? player.UsualPlayingPositionId?.ToString();
 
 static string? FormationGrid(string? formation, int starterIndex)
 {
@@ -632,18 +584,6 @@ static (int? Row, int? Column) ParseGrid(string? grid)
     return int.TryParse(parts[0], out var row) && int.TryParse(parts[1], out var column)
         ? (row, column)
         : (null, null);
-}
-
-static int? StarterNumber(SofaScoreLineupPlayer starter)
-{
-    if (starter.ShirtNumber is not null)
-    {
-        return starter.ShirtNumber;
-    }
-
-    var jerseyNumber = starter.JerseyNumber ?? starter.Player?.JerseyNumber;
-
-    return int.TryParse(jerseyNumber, out var number) ? number : null;
 }
 
 static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? draft) => new(
@@ -700,23 +640,48 @@ record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterRe
 
 record StarterResponse(string Name, int? Number, string? Position, string? Grid, int? GridRow, int? GridColumn);
 
-record SofaScoreEventsResponse(IReadOnlyList<SofaScoreEvent> Events);
+record WorldCupGameResponse(
+    string Id,
+    WorldCupTeamResponse HomeTeam,
+    WorldCupTeamResponse AwayTeam,
+    string? Group,
+    string? Round,
+    string? RoundName,
+    DateTimeOffset StartTimeUtc,
+    WorldCupGameStatusResponse Status);
 
-record SofaScoreEvent(int Id, long? StartTimestamp, SofaScoreTeam? HomeTeam, SofaScoreTeam? AwayTeam, SofaScoreTournament? Tournament);
+record WorldCupTeamResponse(string Id, string Name, string? ShortName);
 
-record SofaScoreTeam(string Name);
+record WorldCupGameStatusResponse(bool Started, bool Finished, string? Score, string? Reason, string? LiveTime);
 
-record SofaScoreTournament(string? Name, SofaScoreUniqueTournament? UniqueTournament);
+record WorldCupLineupResponse(
+    string GameId,
+    string? LineupType,
+    string? Source,
+    WorldCupLineupTeamResponse HomeTeam,
+    WorldCupLineupTeamResponse AwayTeam);
 
-record SofaScoreUniqueTournament(string? Name);
+record WorldCupLineupTeamResponse(
+    string Id,
+    string Name,
+    string? Formation,
+    IReadOnlyList<WorldCupLineupPlayerResponse> Starting11,
+    IReadOnlyList<WorldCupLineupPlayerResponse> Bench);
 
-record SofaScoreLineupsResponse(bool Confirmed, SofaScoreTeamLineup? Home, SofaScoreTeamLineup? Away);
+record WorldCupLineupPlayerResponse(
+    string Id,
+    string Name,
+    string? FirstName,
+    string? LastName,
+    int? ShirtNumber,
+    int? PositionId,
+    int? UsualPlayingPositionId,
+    bool IsCaptain,
+    WorldCupFormationPositionResponse? FormationPosition);
 
-record SofaScoreTeamLineup(string? Formation, IReadOnlyList<SofaScoreLineupPlayer>? Players);
+record WorldCupFormationPositionResponse(WorldCupLayoutResponse? Horizontal, WorldCupLayoutResponse? Vertical);
 
-record SofaScoreLineupPlayer(SofaScorePlayer? Player, int? ShirtNumber, string? JerseyNumber, string? Position, bool Substitute);
-
-record SofaScorePlayer(string Name, string? Position, string? JerseyNumber);
+record WorldCupLayoutResponse(decimal X, decimal Y, decimal Height, decimal Width);
 
 class LiveDraftConnections
 {
