@@ -10,7 +10,7 @@ run:
 val:
 	set -e; \
 	trap 'docker compose down' EXIT; \
-	docker compose up --build -d; \
+	INCLUDE_LINEUPS_IN_MATCH_LIST=true USE_SCRAPER_FIXTURE_DATA=true docker compose up --build -d; \
 	until curl -fsS http://localhost:8080/api/hello >/dev/null 2>&1; do sleep 1; done; \
 	until curl -fsS http://localhost:5082/health >/dev/null 2>&1; do sleep 1; done; \
 	mkdir -p tests/e2e/cypress/e2e/acceptance; \

@@ -5,6 +5,16 @@
 describe('Passkey login', () => {
   const alicePasskey = '11111111-1111-1111-1111-111111111111';
   const bobPasskey = '22222222-2222-2222-2222-222222222222';
+  let matchLabel;
+
+  before(() => {
+    cy.request('/api/matches').then(({ body }) => {
+      const match = body[0];
+
+      expect(match, 'scraper match').to.exist;
+      matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
+    });
+  });
 
   // GIVEN local test users have been seeded with valid passkeys
   // WHEN Alice visits the app using her valid passkey URL
@@ -19,7 +29,7 @@ describe('Passkey login', () => {
     cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
     cy.testGet('api-greeting').should('contain.text', 'Welcome back, Alice');
-    cy.testGet('match-teams').should('contain.text', 'Canada vs Mexico');
+    cy.testGet('match-teams').should('contain.text', matchLabel);
     cy.testGet('no-access').should('not.exist');
   });
 
@@ -36,7 +46,7 @@ describe('Passkey login', () => {
     cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
     cy.testGet('api-greeting').should('contain.text', 'Welcome back, Bob');
-    cy.testGet('match-teams').should('contain.text', 'Canada vs Mexico');
+    cy.testGet('match-teams').should('contain.text', matchLabel);
     cy.testGet('no-access').should('not.exist');
   });
 

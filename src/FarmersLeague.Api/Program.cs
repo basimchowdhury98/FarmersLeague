@@ -291,7 +291,8 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
 
 app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, IConfiguration configuration, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var matches = await GetMatches(httpClientFactory, configuration, cancellationToken);
+    var includeLineups = bool.TryParse(configuration["WorldCupScraper:IncludeLineupsInMatchList"], out var configuredIncludeLineups) && configuredIncludeLineups;
+    var matches = await GetMatches(httpClientFactory, configuration, includeLineups, cancellationToken);
     var responses = new List<HomeMatchResponse>();
 
     foreach (var match in matches)
@@ -306,6 +307,13 @@ app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, IConfigu
 app.MapDelete("/api/testing/drafts", async (IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     await cache.RemoveAsync(DraftCacheKey(1001), cancellationToken);
+
+    return Results.NoContent();
+});
+
+app.MapDelete("/api/testing/drafts/{matchId:int}", async (int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
+{
+    await cache.RemoveAsync(DraftCacheKey(matchId), cancellationToken);
 
     return Results.NoContent();
 });
@@ -336,14 +344,14 @@ static string UserPasskeyCacheKey(string passkey) => $"users:passkeys:{passkey}"
 
 static string DraftCacheKey(int matchId) => $"drafts:{matchId}";
 
-static async Task<IReadOnlyList<MatchResponse>> GetMatches(IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
+static async Task<IReadOnlyList<MatchResponse>> GetMatches(IHttpClientFactory httpClientFactory, IConfiguration configuration, bool includeLineups, CancellationToken cancellationToken)
 {
     var scraper = httpClientFactory.CreateClient("WorldCupScraper");
 
-    return await GetScraperMatches(scraper, cancellationToken);
+    return await GetScraperMatches(scraper, includeLineups, cancellationToken);
 }
 
-static async Task<IReadOnlyList<MatchResponse>> GetScraperMatches(HttpClient scraper, CancellationToken cancellationToken)
+static async Task<IReadOnlyList<MatchResponse>> GetScraperMatches(HttpClient scraper, bool includeLineups, CancellationToken cancellationToken)
 {
     var games = await scraper.GetFromJsonAsync<IReadOnlyList<WorldCupGameResponse>>("api/world-cup-2026/games", AppJson.Options, cancellationToken) ?? [];
     var matches = new List<MatchResponse>();
@@ -356,7 +364,7 @@ static async Task<IReadOnlyList<MatchResponse>> GetScraperMatches(HttpClient scr
             continue;
         }
 
-        var lineups = await GetScraperLineups(scraper, game.Id, cancellationToken);
+        var lineups = includeLineups ? await GetScraperLineups(scraper, game.Id, cancellationToken) : [];
         matches.Add(match with { Lineups = lineups });
     }
 
@@ -383,7 +391,7 @@ static async Task<IReadOnlyList<LineupResponse>> GetScraperLineups(HttpClient sc
 
 static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, IConfiguration configuration, CancellationToken cancellationToken)
 {
-    var matches = await GetMatches(httpClientFactory, configuration, cancellationToken);
+    var matches = await GetMatches(httpClientFactory, configuration, includeLineups: true, cancellationToken);
 
     return matches.FirstOrDefault(match => match.Id == matchId);
 }
