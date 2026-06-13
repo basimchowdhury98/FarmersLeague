@@ -15,7 +15,8 @@
 .turn-card,
 .concept,
 .draft-summary,
-.draft-error {
+.draft-error,
+.live-match {
   max-width: 1120px;
   margin-right: auto;
   margin-left: auto;
@@ -568,6 +569,95 @@ h3 {
   color: rgb(247 241 223 / 60%);
 }
 
+.live-match {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.live-squads,
+.live-player-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.live-squad {
+  padding: 1rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 1.25rem;
+  background: rgb(255 255 255 / 7%);
+}
+
+.live-squad.current-user-live-squad {
+  border-color: #b8e986;
+  background: rgb(184 233 134 / 14%);
+  box-shadow: 0 0 0 1px rgb(184 233 134 / 24%);
+}
+
+.live-squad h2 {
+  margin-bottom: 0.85rem;
+}
+
+.live-player-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 1rem;
+  background: rgb(7 20 15 / 52%);
+}
+
+.live-player-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.live-player-heading span,
+.live-player-no-stats {
+  color: rgb(247 241 223 / 68%);
+  font-weight: 800;
+}
+
+.live-player-stats {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.live-stat-category {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.live-stat-category h4 {
+  margin: 0;
+  color: #b8e986;
+}
+
+.live-stat-category dl {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.live-stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.live-stat-row dt,
+.live-stat-row dd {
+  margin: 0;
+}
+
+.live-stat-row dd {
+  font-weight: 950;
+}
+
 @media (min-width: 720px) {
   .shell {
     padding: 3rem 1.5rem 5rem;
@@ -579,6 +669,10 @@ h3 {
 
   .draft-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .live-player-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
 }

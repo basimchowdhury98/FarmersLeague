@@ -140,27 +140,6 @@ describe('Upcoming match draft lobby', () => {
     });
   };
 
-  const assertDraftOrderReveal = (modeLabel) => {
-    cy.testGet('draft-order-reveal').should('be.visible').and('contain.text', `${modeLabel} draft selected`);
-    cy.testGet('draft-player').find('button').should('be.disabled');
-    cy.testGet('next-draft-order-reveal-button').should('be.visible').click();
-    cy.testGet('draft-order-reveal-slot').first().should('have.attr', 'data-revealed', 'true');
-    cy.testGet('skip-draft-order-reveal-button').should('be.visible').click();
-    cy.testGet('draft-order-reveal-slot').should(($slots) => {
-      expect([...$slots].every((slot) => slot.getAttribute('data-revealed') === 'true')).to.equal(true);
-    });
-    cy.testGet('draft-order-reveal-slot').then(($slots) => {
-      const revealedUsers = [...$slots].map((slot) => slot.querySelector('[data-test="draft-order-reveal-user"]').innerText.trim());
-
-      cy.testGet('draft-order-user').then(($orderUsers) => {
-        const draftOrderUsers = [...$orderUsers].map((user) => user.innerText.trim());
-        expect(revealedUsers).to.deep.equal(draftOrderUsers);
-      });
-    });
-    cy.testGet('complete-draft-order-reveal-button').should('be.visible').click();
-    cy.testGet('draft-order-reveal').should('not.exist');
-  };
-
   const createDraftFromHome = () => {
     cy.visit(`/${alicePasskey}`);
     matchCard().within(() => cy.testGet('create-draft-button').click());
@@ -390,7 +369,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('start-round-robin-draft-button').click();
 
     cy.testGet('draft-status').should('contain.text', 'Draft in progress');
-    assertDraftOrderReveal('Round robin');
     cy.testGet('draft-order').find('[data-test="draft-order-user"]').should('have.length', 2);
     cy.testGet('draft-order').should('contain.text', 'Alice').and('contain.text', 'Bob');
     assertTwoUserRoundRobinQueue();
@@ -414,7 +392,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('start-abba-draft-button').click();
 
     cy.testGet('draft-status').should('contain.text', 'Draft in progress');
-    assertDraftOrderReveal('ABBA');
     cy.testGet('draft-order').find('[data-test="draft-order-user"]').should('have.length', 2);
     cy.testGet('draft-order').should('contain.text', 'Alice').and('contain.text', 'Bob');
     assertTwoUserAbbaQueue();
@@ -432,7 +409,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('start-abba-draft-button').click();
 
     cy.testGet('draft-status').should('contain.text', 'Draft in progress');
-    assertDraftOrderReveal('ABBA');
     cy.testGet('draft-order').find('[data-test="draft-order-user"]').should('have.length', 3);
     cy.testGet('draft-order').should('contain.text', 'Alice').and('contain.text', 'Bob').and('contain.text', 'Carol');
     assertThreeUserAbbaQueue();

@@ -57,6 +57,37 @@ export type DraftPickErrorResponse = {
   message: string;
 };
 
+export type LiveMatchResponse = {
+  match: MatchResponse;
+  squads: LiveSquad[];
+};
+
+export type LiveSquad = {
+  userName: string;
+  players: LivePlayer[];
+};
+
+export type LivePlayer = {
+  name: string;
+  teamName: string | null;
+  categories: PlayerStatCategory[];
+};
+
+export type PlayerStatCategory = {
+  key: string;
+  title: string;
+  stats: PlayerStat[];
+};
+
+export type PlayerStat = {
+  key: string;
+  label: string;
+  sourceGroup: string | null;
+  value: unknown;
+  total: unknown;
+  type: string | null;
+};
+
 export type DraftPickFlight = {
   id: number;
   userName: string;

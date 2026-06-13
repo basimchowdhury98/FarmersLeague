@@ -206,7 +206,7 @@ describe('Match draft page', () => {
     });
   });
 
-  it('live updates an open draft page when the final pick completes the draft', () => {
+  it('navigates an open draft page to the live match page when the final pick completes the draft', () => {
     setAliceBobDraft(completedPicks().slice(0, 5));
 
     cy.visit(draftPath(alicePasskey));
@@ -214,17 +214,8 @@ describe('Match draft page', () => {
 
     draftAs(bobPasskey, awayStarters[2]);
 
-    cy.testGet('draft-status').should('contain.text', 'Draft complete');
-    cy.testGet('current-turn').should('not.exist');
-    cy.testGet('draft-turn-queue').should('not.exist');
-    cy.testGet('draft-summary').within(() => {
-      homeStarters.slice(0, 3).forEach((player) => cy.testGet('draft-picks-Alice').should('contain.text', player));
-      awayStarters.slice(0, 3).forEach((player) => cy.testGet('draft-picks-Bob').should('contain.text', player));
-    });
-    draftPlayerRow(awayStarters[2])
-      .should('contain.text', 'Drafted by Bob')
-      .find('button')
-      .should('be.disabled');
+    cy.location('pathname').should('equal', `/${alicePasskey}/matches/${match.id}/live`);
+    cy.testGet('live-match-page').should('be.visible');
   });
 
   it('restores draft state from Redis after reopening the draft page', () => {

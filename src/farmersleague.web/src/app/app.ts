@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
-import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
-import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, MatchFeedTab, MatchResponse, StarterResponse } from './models';
+import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
+import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchResponse, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
 
 @Component({
   selector: 'app-root',
@@ -30,6 +30,8 @@ export class App {
     return dateKey ? this.upcomingMatches().filter((match) => this.matchDateKey(match) === dateKey) : [];
   });
   protected readonly draft = signal<DraftResponse | null>(null);
+  protected readonly liveMatch = signal<LiveMatchResponse | null>(null);
+  protected readonly liveMatchUnavailable = signal('');
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
   protected readonly draftPickFlight = signal<DraftPickFlight | null>(null);
@@ -41,7 +43,7 @@ export class App {
   protected readonly passkey = signal('');
   protected readonly userName = signal('');
   protected readonly isAdmin = signal(false);
-  protected readonly route = signal<'home' | 'draft'>('home');
+  protected readonly route = signal<'home' | 'draft' | 'live'>('home');
   private draftSocket: WebSocket | null = null;
   private draftPickFlightId = 0;
   private activeDraftPickFlightKey = '';
@@ -74,10 +76,17 @@ export class App {
 
   private loadCurrentRoute() {
     const draftMatch = window.location.pathname.match(/^\/[^/]+\/matches\/(\d+)\/draft$/);
+    const liveMatch = window.location.pathname.match(/^\/[^/]+\/matches\/(\d+)\/live$/);
 
     if (draftMatch) {
       this.route.set('draft');
       this.loadDraft(Number(draftMatch[1]));
+      return;
+    }
+
+    if (liveMatch) {
+      this.route.set('live');
+      this.loadLiveMatch(Number(liveMatch[1]));
       return;
     }
 
@@ -176,6 +185,10 @@ export class App {
     window.location.href = `/${this.passkey()}/matches/${match.id}/draft`;
   }
 
+  private openLiveMatch(matchId: number) {
+    window.location.href = `/${this.passkey()}/matches/${matchId}/live`;
+  }
+
   protected createDraft(match: MatchResponse, event?: Event) {
     event?.stopPropagation();
     this.http.post<DraftResponse>(`/api/drafts/${match.id}`, { passkey: this.passkey() }).subscribe(() => {
@@ -267,6 +280,10 @@ export class App {
 
   protected lineupUnavailableMessage() {
     return lineupUnavailableMessage;
+  }
+
+  protected liveMatchUnavailableMessage() {
+    return liveMatchUnavailableMessage;
   }
 
   protected canStartDraft(draft: DraftResponse) {
@@ -388,6 +405,37 @@ export class App {
     return this.draft()?.picks.filter((pick) => pick.userName === userName) ?? [];
   }
 
+  protected liveSquads() {
+    const liveMatch = this.liveMatch();
+    if (!liveMatch) {
+      return [];
+    }
+
+    return [...liveMatch.squads].sort((left, right) => {
+      if (left.userName === this.userName()) {
+        return -1;
+      }
+
+      if (right.userName === this.userName()) {
+        return 1;
+      }
+
+      return 0;
+    });
+  }
+
+  protected isCurrentUserSquad(squad: LiveSquad) {
+    return squad.userName === this.userName();
+  }
+
+  protected playerStatValue(stat: PlayerStat) {
+    if (stat.value === null || stat.value === undefined || stat.value === '') {
+      return '—';
+    }
+
+    return `${stat.value}`;
+  }
+
   protected formationRows(lineup: LineupResponse, invertRows = false) {
     const grouped = new Map<number, StarterResponse[]>();
 
@@ -494,6 +542,21 @@ export class App {
     });
   }
 
+  private loadLiveMatch(matchId: number) {
+    this.liveMatch.set(null);
+    this.liveMatchUnavailable.set('');
+
+    this.http.get<LiveMatchResponse>(`/api/matches/${matchId}/live?passkey=${encodeURIComponent(this.passkey())}`).subscribe({
+      next: (response) => {
+        this.liveMatch.set(response);
+      },
+      error: (error) => {
+        const response = error.error as DraftPickErrorResponse | undefined;
+        this.liveMatchUnavailable.set(response?.message ?? liveMatchUnavailableMessage);
+      }
+    });
+  }
+
   private connectDraftLiveUpdates(matchId: number) {
     this.draftSocket?.close();
     this.draftLiveError.set('');
@@ -529,6 +592,11 @@ export class App {
     const currentDraft = this.draft();
     if (!currentDraft) {
       this.draft.set(response);
+      return;
+    }
+
+    if (!currentDraft.isComplete && response.isComplete) {
+      this.openLiveMatch(response.match.id);
       return;
     }
 

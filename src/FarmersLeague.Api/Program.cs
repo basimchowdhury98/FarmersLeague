@@ -325,6 +325,26 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     return Results.Ok(updatedResponse);
 });
 
+app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
+{
+    var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, cache, cancellationToken);
+    if (draftContext.Error is not null)
+    {
+        return draftContext.Error;
+    }
+
+    var draft = await GetDraft(matchId, cache, cancellationToken);
+    if (draft is null || !IsDraftComplete(draft))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Match has not started yet"));
+    }
+
+    var match = draftContext.Match!;
+    var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), httpClientFactory, cancellationToken);
+
+    return Results.Ok(ToLiveMatchResponse(match, draft, stats));
+});
+
 app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     var matches = await GetMatches(httpClientFactory, includeLineups: false, cancellationToken);
@@ -441,6 +461,24 @@ static async Task<IReadOnlyList<LineupResponse>> GetScraperLineups(HttpClient sc
     }
 
     return [ToScraperLineupResponse(response.HomeTeam), ToScraperLineupResponse(response.AwayTeam)];
+}
+
+static async Task<PlayerStatsResponse?> GetPlayerStats(int matchId, IReadOnlyList<string> playerNames, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
+{
+    var scraper = httpClientFactory.CreateClient("WorldCupScraper");
+    using var httpResponse = await scraper.PostAsJsonAsync(
+        $"api/world-cup-2026/games/{matchId}/player-stats",
+        new PlayerStatsRequest(playerNames),
+        AppJson.Options,
+        cancellationToken);
+
+    if (httpResponse.StatusCode == HttpStatusCode.NotFound)
+    {
+        return null;
+    }
+
+    httpResponse.EnsureSuccessStatusCode();
+    return await httpResponse.Content.ReadFromJsonAsync<PlayerStatsResponse>(AppJson.Options, cancellationToken);
 }
 
 static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
@@ -700,6 +738,34 @@ static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? dr
     match.Lineups,
     draft is null ? null : ToDraftResponse(match, draft),
     HasMatchStarted(match));
+
+static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, PlayerStatsResponse? stats)
+{
+    var playersByName = stats?.Players.ToDictionary(player => player.Name, StringComparer.Ordinal) ?? [];
+    var teamsByPlayerName = match.Lineups
+        .SelectMany(lineup => lineup.Starters.Concat(lineup.Bench).Select(player => new { player.Name, lineup.TeamName }))
+        .GroupBy(player => player.Name, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group.First().TeamName, StringComparer.Ordinal);
+
+    var squads = draft.Picks
+        .GroupBy(pick => pick.UserName, StringComparer.Ordinal)
+        .Select(group => new LiveSquadResponse(
+            group.Key,
+            group.Select(pick => ToLivePlayerResponse(pick.PlayerName, playersByName, teamsByPlayerName)).ToArray()))
+        .ToArray();
+
+    return new LiveMatchResponse(match, squads);
+}
+
+static LivePlayerResponse ToLivePlayerResponse(string playerName, IReadOnlyDictionary<string, PlayerStatsPlayerResponse> playersByName, IReadOnlyDictionary<string, string> teamsByPlayerName)
+{
+    if (playersByName.TryGetValue(playerName, out var statsPlayer))
+    {
+        return new LivePlayerResponse(playerName, statsPlayer.TeamName, statsPlayer.Categories);
+    }
+
+    return new LivePlayerResponse(playerName, teamsByPlayerName.GetValueOrDefault(playerName), []);
+}
 
 static LeagueUser[] SeededUsers() =>
 [
