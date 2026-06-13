@@ -69,12 +69,49 @@ app.MapGet("/api/world-cup-2026/games/{gameId}/lineups", async (string gameId, F
     }
 });
 
+app.MapPost("/api/world-cup-2026/games/{gameId}/player-stats", async (string gameId, WorldCupPlayerStatsRequest request, FotMobWorldCupScraper scraper, CancellationToken cancellationToken) =>
+{
+    if (request.Players.Count == 0)
+    {
+        return Results.BadRequest(new { title = "At least one player name or identifier is required" });
+    }
+
+    try
+    {
+        var playerStats = await scraper.GetPlayerStats(gameId, request.Players, cancellationToken);
+
+        return playerStats is null
+            ? Results.NotFound(new { title = "Player stats are not available for this game" })
+            : Results.Ok(playerStats);
+    }
+    catch (FotMobScrapeException exception)
+    {
+        return Results.Problem(exception.Message, statusCode: StatusCodes.Status502BadGateway);
+    }
+    catch (HttpRequestException exception)
+    {
+        return Results.Problem($"FotMob request failed: {exception.Message}", statusCode: StatusCodes.Status502BadGateway);
+    }
+    catch (JsonException exception)
+    {
+        return Results.Problem($"FotMob page data could not be parsed: {exception.Message}", statusCode: StatusCodes.Status502BadGateway);
+    }
+});
+
 app.Run();
 
 class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration configuration)
 {
     private const string NextDataStart = "<script id=\"__NEXT_DATA__\" type=\"application/json\">";
     private const string ScriptEnd = "</script>";
+    private static readonly PlayerStatCategoryDefinition[] PlayerStatCategories =
+    [
+        new("attack", "Attack", ["goals", "expected_goals", "expected_goals_on_target_variant", "total_shots", "ShotsOnTarget", "touches_opp_box", "dribbles_succeeded", "big_chance_missed_title"]),
+        new("passes", "Passes", ["touches", "accurate_passes", "assists", "expected_assists", "chances_created", "passes_into_final_third", "accurate_crosses", "long_balls_accurate"]),
+        new("defense", "Defense", ["defensive_actions", "matchstats.headers.tackles", "interceptions", "shot_blocks", "recoveries", "clearances", "headed_clearance", "dribbled_past"]),
+        new("duels", "Duels", ["duel_won", "duel_lost", "ground_duels_won", "aerials_won", "fouls", "was_fouled", "dribbles_succeeded", "matchstats.headers.tackles"]),
+        new("goalkeeping", "Goalkeeping", ["saves", "goals_conceded", "expected_goals_on_target_faced", "goals_prevented", "keeper_sweeper", "keeper_high_claim", "long_balls_accurate", "accurate_passes"])
+    ];
 
     public async Task<IReadOnlyList<WorldCupGameResponse>> GetGames(CancellationToken cancellationToken)
     {
@@ -87,6 +124,53 @@ class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration
     }
 
     public async Task<WorldCupLineupResponse?> GetLineup(string gameId, CancellationToken cancellationToken)
+    {
+        var root = await GetMatchPageRoot(gameId, cancellationToken);
+        if (root is null)
+        {
+            return null;
+        }
+
+        return TryGetLineup(root.Value, out var lineup) && IsConfirmedLineup(lineup)
+            ? ToLineup(lineup)
+            : null;
+    }
+
+    public async Task<WorldCupPlayerStatsResponse?> GetPlayerStats(string gameId, IReadOnlyList<string> requestedPlayers, CancellationToken cancellationToken)
+    {
+        var root = await GetMatchPageRoot(gameId, cancellationToken);
+        if (root is null || !TryGetPlayerStats(root.Value, out var playerStats))
+        {
+            return null;
+        }
+
+        var players = playerStats
+            .EnumerateObject()
+            .Where(property => property.Value.ValueKind == JsonValueKind.Object)
+            .Select(property => ToPlayerStatsPlayer(property.Value))
+            .ToArray();
+        var foundPlayers = new List<WorldCupPlayerStatsPlayerResponse>();
+        var missingPlayers = new List<string>();
+
+        foreach (var requestedPlayer in requestedPlayers.Select(player => player.Trim()).Where(player => player.Length > 0))
+        {
+            var player = players.FirstOrDefault(player => PlayerMatches(player, requestedPlayer));
+            if (player is null)
+            {
+                missingPlayers.Add(requestedPlayer);
+                continue;
+            }
+
+            if (!foundPlayers.Any(foundPlayer => foundPlayer.Id == player.Id))
+            {
+                foundPlayers.Add(player);
+            }
+        }
+
+        return new WorldCupPlayerStatsResponse(gameId, foundPlayers, missingPlayers);
+    }
+
+    private async Task<JsonElement?> GetMatchPageRoot(string gameId, CancellationToken cancellationToken)
     {
         var matches = await GetFixtureMatches(cancellationToken);
         var match = matches.FirstOrDefault(match => match.Game.Id == gameId);
@@ -105,9 +189,7 @@ class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration
         var nextDataJson = ExtractNextData(html);
         using var document = JsonDocument.Parse(nextDataJson);
 
-        return TryGetLineup(document.RootElement, out var lineup) && IsConfirmedLineup(lineup)
-            ? ToLineup(lineup)
-            : null;
+        return document.RootElement.Clone();
     }
 
     private async Task<IReadOnlyList<FotMobFixtureMatch>> GetFixtureMatches(CancellationToken cancellationToken)
@@ -199,6 +281,17 @@ class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration
             && lineup.ValueKind == JsonValueKind.Object;
     }
 
+    private static bool TryGetPlayerStats(JsonElement root, out JsonElement playerStats)
+    {
+        playerStats = default;
+
+        return root.TryGetProperty("props", out var props)
+            && props.TryGetProperty("pageProps", out var pageProps)
+            && pageProps.TryGetProperty("content", out var content)
+            && content.TryGetProperty("playerStats", out playerStats)
+            && playerStats.ValueKind == JsonValueKind.Object;
+    }
+
     private static WorldCupLineupResponse ToLineup(JsonElement lineup) => new(
         RequiredString(lineup, "matchId"),
         OptionalString(lineup, "lineupType"),
@@ -229,6 +322,81 @@ class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration
         OptionalString(team, "formation"),
         ToPlayers(RequiredArray(team, "starters"), includeFormationPosition: true),
         ToPlayers(RequiredArray(team, "subs"), includeFormationPosition: false));
+
+    private static WorldCupPlayerStatsPlayerResponse ToPlayerStatsPlayer(JsonElement player)
+    {
+        var statsByKey = FlattenPlayerStats(player);
+
+        return new WorldCupPlayerStatsPlayerResponse(
+            RequiredString(player, "id"),
+            OptionalString(player, "optaId"),
+            RequiredString(player, "name"),
+            RequiredString(player, "teamId"),
+            RequiredString(player, "teamName"),
+            OptionalString(player, "shirtNumber"),
+            OptionalBool(player, "isGoalkeeper") ?? false,
+            PlayerStatCategories
+                .Select(category => ToPlayerStatCategory(category, statsByKey))
+                .Where(category => category.Stats.Count > 0)
+                .ToArray());
+    }
+
+    private static Dictionary<string, WorldCupPlayerStatResponse> FlattenPlayerStats(JsonElement player)
+    {
+        var statsByKey = new Dictionary<string, WorldCupPlayerStatResponse>(StringComparer.OrdinalIgnoreCase);
+        if (!TryGetArray(player, "stats", out var statGroups))
+        {
+            return statsByKey;
+        }
+
+        foreach (var group in statGroups.EnumerateArray())
+        {
+            var groupKey = OptionalString(group, "key");
+            if (!TryGetObject(group, "stats", out var stats))
+            {
+                continue;
+            }
+
+            foreach (var statProperty in stats.EnumerateObject())
+            {
+                if (!TryGetObject(statProperty.Value, "stat", out var stat))
+                {
+                    continue;
+                }
+
+                var key = OptionalString(statProperty.Value, "key");
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                statsByKey[key] = new WorldCupPlayerStatResponse(
+                    key,
+                    statProperty.Name,
+                    groupKey,
+                    OptionalJsonValue(stat, "value"),
+                    OptionalJsonValue(stat, "total"),
+                    OptionalString(stat, "type"));
+            }
+        }
+
+        return statsByKey;
+    }
+
+    private static WorldCupPlayerStatCategoryResponse ToPlayerStatCategory(PlayerStatCategoryDefinition category, Dictionary<string, WorldCupPlayerStatResponse> statsByKey) => new(
+        category.Key,
+        category.Title,
+        category.StatKeys
+            .Where(statsByKey.ContainsKey)
+            .Select(key => statsByKey[key])
+            .ToArray());
+
+    private static bool PlayerMatches(WorldCupPlayerStatsPlayerResponse player, string requestedPlayer)
+    {
+        return string.Equals(player.Id, requestedPlayer, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(player.OptaId, requestedPlayer, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(player.Name, requestedPlayer, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static IReadOnlyList<WorldCupLineupPlayerResponse> ToPlayers(JsonElement players, bool includeFormationPosition) => players
         .EnumerateArray()
@@ -345,6 +513,24 @@ class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration
         };
     }
 
+    private static object? OptionalJsonValue(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var value) || value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number when value.TryGetInt64(out var integer) => integer,
+            JsonValueKind.Number when value.TryGetDecimal(out var number) => number,
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => value.GetRawText()
+        };
+    }
+
     private static int? OptionalInt(JsonElement element, string propertyName)
     {
         if (!element.TryGetProperty(propertyName, out var value))
@@ -377,6 +563,8 @@ class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration
 }
 
 record FotMobFixtureMatch(WorldCupGameResponse Game, string PageUrl);
+
+record PlayerStatCategoryDefinition(string Key, string Title, IReadOnlyList<string> StatKeys);
 
 record WorldCupGameResponse(
     string Id,
@@ -420,5 +608,35 @@ record WorldCupLineupPlayerResponse(
 record WorldCupFormationPositionResponse(WorldCupLayoutResponse? Horizontal, WorldCupLayoutResponse? Vertical);
 
 record WorldCupLayoutResponse(decimal X, decimal Y, decimal Height, decimal Width);
+
+record WorldCupPlayerStatsRequest(IReadOnlyList<string> Players);
+
+record WorldCupPlayerStatsResponse(
+    string GameId,
+    IReadOnlyList<WorldCupPlayerStatsPlayerResponse> Players,
+    IReadOnlyList<string> MissingPlayers);
+
+record WorldCupPlayerStatsPlayerResponse(
+    string Id,
+    string? OptaId,
+    string Name,
+    string TeamId,
+    string TeamName,
+    string? ShirtNumber,
+    bool IsGoalkeeper,
+    IReadOnlyList<WorldCupPlayerStatCategoryResponse> Categories);
+
+record WorldCupPlayerStatCategoryResponse(
+    string Key,
+    string Title,
+    IReadOnlyList<WorldCupPlayerStatResponse> Stats);
+
+record WorldCupPlayerStatResponse(
+    string Key,
+    string Label,
+    string? SourceGroup,
+    object? Value,
+    object? Total,
+    string? Type);
 
 class FotMobScrapeException(string message) : Exception(message);
