@@ -4,8 +4,8 @@
  * a small squad from the match's starting lineups without choosing already-drafted players.
  */
 describe('Match draft page', () => {
-  const alicePasskey = '11111111-1111-1111-1111-111111111111';
-  const bobPasskey = '22222222-2222-2222-2222-222222222222';
+  const alicePasskey = 'alice-1111-1111-1111';
+  const bobPasskey = 'bob-2222-2222-2222';
   const fullBenchPlayerCount = 15;
 
   let match;
@@ -278,7 +278,7 @@ describe('Match draft page', () => {
   });
 
   it('does not show draft content to visitors without a valid passkey', () => {
-    cy.visit(`/99999999-9999-9999-9999-999999999999/matches/${match.id}/draft`);
+    cy.visit(`/mallory-9999-9999-9999/matches/${match.id}/draft`);
 
     cy.testGet('no-access').should('be.visible').and('contain.text', 'No access');
     cy.testGet('draft-page').should('not.exist');

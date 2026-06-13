@@ -1,10 +1,10 @@
 /**
- * As a provisioned league player, I want to log in by visiting my unique passkey URL,
+ * As a provisioned league player, I want to log in by visiting my formatted unique passkey URL,
  * so that only invited friends can access the FarmersLeague home page.
  */
 describe('Passkey login', () => {
-  const alicePasskey = '11111111-1111-1111-1111-111111111111';
-  const bobPasskey = '22222222-2222-2222-2222-222222222222';
+  const alicePasskey = 'alice-1111-1111-1111';
+  const bobPasskey = 'bob-2222-2222-2222';
   let matchLabel;
 
   before(() => {
@@ -16,7 +16,7 @@ describe('Passkey login', () => {
     });
   });
 
-  // GIVEN local test users have been seeded with valid passkeys
+  // GIVEN local test users have been seeded with formatted passkeys and Alice is an admin
   // WHEN Alice visits the app using her valid passkey URL
   // THEN she sees the current FarmersLeague home page
   it('allows Alice to access the home page with her valid passkey', () => {
@@ -33,7 +33,7 @@ describe('Passkey login', () => {
     cy.testGet('no-access').should('not.exist');
   });
 
-  // GIVEN local test users have been seeded with valid passkeys
+  // GIVEN local test users have been seeded with formatted passkeys and Bob is not an admin
   // WHEN Bob visits the app using his valid passkey URL
   // THEN he sees the current FarmersLeague home page
   it('allows Bob to access the home page with his valid passkey', () => {
@@ -50,11 +50,11 @@ describe('Passkey login', () => {
     cy.testGet('no-access').should('not.exist');
   });
 
-  // GIVEN local test users have been seeded with valid passkeys
-  // WHEN a visitor opens the app with an unknown passkey URL
+  // GIVEN access requires a known formatted passkey
+  // WHEN a visitor opens the app with an unknown formatted passkey URL
   // THEN they see a “no access” page instead of the FarmersLeague home page
   it('denies access for an unknown passkey', () => {
-    cy.visit('/99999999-9999-9999-9999-999999999999');
+    cy.visit('/mallory-9999-9999-9999');
 
     cy.testGet('no-access').should('be.visible').and('contain.text', 'No access');
     cy.contains('h1', 'FarmersLeague').should('not.exist');

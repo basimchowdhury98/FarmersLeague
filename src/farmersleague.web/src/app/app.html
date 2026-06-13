@@ -119,8 +119,8 @@
               @if (!hasConfirmedFullSquads(draftState.match)) {
                 <p class="draft-warning" data-test="lineup-unavailable-banner">{{ lineupUnavailableMessage() }}</p>
               }
-              @if (draftState.joinedUsers.includes(userName())) {
-                <button type="button" data-test="start-draft-button" [disabled]="!canStartDraft(draftState)" (click)="startDraft()">Start draft</button>
+              @if (canShowStartDraft(draftState)) {
+                <button type="button" data-test="start-draft-button" [disabled]="!canStartDraft(draftState)" (click)="openDraftOrderModeDialog()">Start draft</button>
               }
             </div>
           }
@@ -170,6 +170,53 @@
 
       @if (draftError()) {
         <p class="draft-error" data-test="draft-error">{{ draftError() }}</p>
+      }
+
+      @if (isDraftOrderModeDialogOpen()) {
+        <section class="draft-order-mode-dialog" data-test="draft-order-mode-dialog" role="dialog" aria-modal="true" aria-labelledby="draft-order-mode-heading">
+          <div class="draft-order-mode-panel">
+            <h2 id="draft-order-mode-heading">Choose draft order</h2>
+            <p>Round robin repeats the same order. ABBA reverses every other round.</p>
+            <div class="draft-order-mode-actions">
+              <button type="button" data-test="start-round-robin-draft-button" (click)="startDraft('roundRobin')">Round robin</button>
+              <button type="button" data-test="start-abba-draft-button" (click)="startDraft('abba')">ABBA</button>
+              <button type="button" data-test="cancel-draft-order-mode-button" (click)="closeDraftOrderModeDialog()">Cancel</button>
+            </div>
+          </div>
+        </section>
+      }
+
+      @if (draftOrderReveal(); as reveal) {
+        <section class="draft-order-reveal" data-test="draft-order-reveal" role="dialog" aria-modal="true" aria-labelledby="draft-order-reveal-heading">
+          <div class="draft-order-mode-panel draft-order-reveal-panel">
+            <p class="eyebrow">{{ reveal.modeLabel }} draft selected</p>
+            <h2 id="draft-order-reveal-heading">Draft order reveal</h2>
+            <p class="draft-order-reveal-copy">Managers are locked in. The commissioner controls each reveal for the whole room.</p>
+            <ol class="draft-order-slots" data-test="draft-order-reveal-slots">
+              @for (slot of reveal.slots; track slot.userName) {
+                <li class="draft-order-slot" data-test="draft-order-reveal-slot" [class.is-revealed]="slot.isRevealed" [attr.data-revealed]="slot.isRevealed">
+                  <span class="slot-position">Pick {{ $index + 1 }}</span>
+                  <span class="slot-window">
+                    <span class="slot-spinner" aria-hidden="true">ABBA · RR · FARM · DRAFT</span>
+                    <strong data-test="draft-order-reveal-user">{{ slot.userName }}</strong>
+                  </span>
+                </li>
+              }
+            </ol>
+            @if (canControlDraftOrderReveal()) {
+              <div class="draft-order-mode-actions">
+                @if (isDraftOrderRevealComplete(reveal)) {
+                  <button type="button" data-test="complete-draft-order-reveal-button" (click)="completeDraftOrderReveal()">Start drafting</button>
+                } @else {
+                  <button type="button" data-test="next-draft-order-reveal-button" (click)="showNextDraftOrderRevealSlot()">Next manager</button>
+                  <button type="button" data-test="skip-draft-order-reveal-button" (click)="skipDraftOrderReveal()">Skip reveal</button>
+                }
+              </div>
+            } @else {
+              <p class="draft-order-reveal-copy" data-test="draft-order-reveal-waiting">Waiting for the commissioner...</p>
+            }
+          </div>
+        </section>
       }
 
       @if (draftLiveError()) {

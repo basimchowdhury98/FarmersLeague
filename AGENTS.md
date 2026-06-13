@@ -1,5 +1,9 @@
 Use `data-test` attributes for Cypress UI selectors and select them with `cy.testGet('selector-name')`.
 
+Access control:
+- Draft lifecycle permissions must be based on a user's admin flag, not a hard-coded user name like Alice.
+- Seeded/test passkeys should use the formatted pattern `<name>-dddd-dddd-dddd`, such as `alice-1111-1111-1111`.
+
 Scraper API overview:
 - `src/FarmersLeague.Scraper` is a separate API used by `src/FarmersLeague.Api` through the `WorldCupScraper` HTTP client.
 - The main app calls the scraper for World Cup games, confirmed lineups, and player stats.

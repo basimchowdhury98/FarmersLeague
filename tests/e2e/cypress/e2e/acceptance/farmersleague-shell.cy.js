@@ -1,5 +1,5 @@
 describe('FarmersLeague shell', () => {
-  const alicePasskey = '11111111-1111-1111-1111-111111111111';
+  const alicePasskey = 'alice-1111-1111-1111';
 
   // GIVEN the app and scraper API are running
   // WHEN Alice opens the FarmersLeague shell using her valid passkey URL

@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
 import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
-import { AccessResponse, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, MatchFeedTab, MatchResponse, StarterResponse } from './models';
+import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, MatchFeedTab, MatchResponse, StarterResponse } from './models';
 
 @Component({
   selector: 'app-root',
@@ -33,11 +33,14 @@ export class App {
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
   protected readonly draftPickFlight = signal<DraftPickFlight | null>(null);
+  protected readonly draftOrderReveal = signal<DraftOrderReveal | null>(null);
   protected readonly recentlyDraftedPlayer = signal('');
+  protected readonly isDraftOrderModeDialogOpen = signal(false);
   protected readonly hasAccess = signal(false);
   protected readonly isCheckingAccess = signal(true);
   protected readonly passkey = signal('');
   protected readonly userName = signal('');
+  protected readonly isAdmin = signal(false);
   protected readonly route = signal<'home' | 'draft'>('home');
   private draftSocket: WebSocket | null = null;
   private draftPickFlightId = 0;
@@ -58,6 +61,7 @@ export class App {
       next: (response) => {
         this.hasAccess.set(true);
         this.userName.set(response.userName);
+        this.isAdmin.set(response.isAdmin);
         this.isCheckingAccess.set(false);
 
         this.loadCurrentRoute();
@@ -193,15 +197,26 @@ export class App {
     });
   }
 
-  protected startDraft() {
+  protected openDraftOrderModeDialog() {
+    this.isDraftOrderModeDialogOpen.set(true);
+  }
+
+  protected closeDraftOrderModeDialog() {
+    this.isDraftOrderModeDialogOpen.set(false);
+  }
+
+  protected startDraft(draftOrderMode: DraftOrderMode) {
     const draft = this.draft();
     if (!draft) {
       return;
     }
 
     this.draftError.set('');
-    this.http.post<DraftResponse>(`/api/drafts/${draft.match.id}/start`, { passkey: this.passkey() }).subscribe({
-      next: (response) => this.applyDraftUpdate(response),
+    this.http.post<DraftResponse>(`/api/drafts/${draft.match.id}/start`, { passkey: this.passkey(), draftOrderMode }).subscribe({
+      next: () => {
+        this.closeDraftOrderModeDialog();
+        // The reveal is synchronized for everyone by the websocket broadcast.
+      },
       error: (error) => {
         const response = error.error as DraftPickErrorResponse | undefined;
         this.draftError.set(response?.message ?? 'Unable to start draft');
@@ -226,7 +241,7 @@ export class App {
   }
 
   protected canCreateDraft(match: MatchResponse) {
-    return !this.hasMatchStarted(match) && !match.draft;
+    return this.canManageDraftLifecycle() && !this.hasMatchStarted(match) && !match.draft;
   }
 
   protected canJoinDraft(match: MatchResponse) {
@@ -234,7 +249,7 @@ export class App {
   }
 
   protected canCancelDraft(match: MatchResponse) {
-    return !this.hasMatchStarted(match) && !!match.draft && !match.draft.isComplete && match.draft.status !== 'completed';
+    return this.canManageDraftLifecycle() && !this.hasMatchStarted(match) && !!match.draft && !match.draft.isComplete && match.draft.status !== 'completed';
   }
 
   protected hasMatchStarted(match: MatchResponse) {
@@ -255,7 +270,15 @@ export class App {
   }
 
   protected canStartDraft(draft: DraftResponse) {
-    return draft.joinedUsers.length >= 2 && this.hasConfirmedFullSquads(draft.match);
+    return this.canManageDraftLifecycle() && draft.joinedUsers.length >= 2 && this.hasConfirmedFullSquads(draft.match);
+  }
+
+  protected canShowStartDraft(draft: DraftResponse) {
+    return this.canManageDraftLifecycle() && draft.joinedUsers.includes(this.userName());
+  }
+
+  private canManageDraftLifecycle() {
+    return this.isAdmin();
   }
 
   protected kickoffText(match: MatchResponse) {
@@ -396,14 +419,22 @@ export class App {
   }
 
   protected remainingTurns(draft: DraftResponse) {
-    const totalTurns = draft.draftOrder.length * maxPicksPerUser;
-    const remainingTurnCount = Math.max(totalTurns - draft.picks.length, 0);
+    const draftTurns = this.draftTurns(draft);
+    const remainingTurnCount = Math.max(draftTurns.length - draft.picks.length, 0);
 
-    if (draft.isComplete || remainingTurnCount === 0 || draft.draftOrder.length === 0) {
+    if (draft.isComplete || remainingTurnCount === 0 || draftTurns.length === 0) {
       return [];
     }
 
-    return Array.from({ length: remainingTurnCount }, (_, index) => draft.draftOrder[(draft.picks.length + index) % draft.draftOrder.length]);
+    return draftTurns.slice(draft.picks.length);
+  }
+
+  private draftTurns(draft: DraftResponse) {
+    return draft.draftTurnOrder.length > 0 ? draft.draftTurnOrder : this.roundRobinDraftTurns(draft.draftOrder);
+  }
+
+  private roundRobinDraftTurns(draftOrder: string[]) {
+    return Array.from({ length: draftOrder.length * maxPicksPerUser }, (_, index) => draftOrder[index % draftOrder.length]);
   }
 
   protected turnQueueItemOpacity(index: number) {
@@ -414,6 +445,7 @@ export class App {
     const draft = this.draft();
 
     return (
+      this.draftOrderReveal() !== null ||
       !draft ||
       draft.isComplete ||
       draft.status !== 'started' ||
@@ -425,6 +457,34 @@ export class App {
 
   protected isRecentlyDrafted(playerName: string) {
     return this.recentlyDraftedPlayer() === playerName;
+  }
+
+  protected canControlDraftOrderReveal() {
+    return this.isAdmin();
+  }
+
+  protected isDraftOrderRevealComplete(reveal: DraftOrderReveal) {
+    return reveal.slots.every((slot) => slot.isRevealed);
+  }
+
+  protected showNextDraftOrderRevealSlot() {
+    const reveal = this.draftOrderReveal();
+    if (!reveal || this.isDraftOrderRevealComplete(reveal)) {
+      return;
+    }
+
+    this.sendDraftLiveMessage({
+      type: 'draftOrderRevealNext',
+      revealedCount: reveal.slots.filter((slot) => slot.isRevealed).length + 1
+    });
+  }
+
+  protected skipDraftOrderReveal() {
+    this.sendDraftLiveMessage({ type: 'draftOrderRevealSkip' });
+  }
+
+  protected completeDraftOrderReveal() {
+    this.sendDraftLiveMessage({ type: 'draftOrderRevealComplete' });
   }
 
   private loadDraft(matchId: number) {
@@ -443,7 +503,7 @@ export class App {
     this.draftSocket = socket;
 
     socket.addEventListener('message', (event) => {
-      this.applyDraftUpdate(JSON.parse(event.data) as DraftResponse);
+      this.applyDraftLiveMessage(JSON.parse(event.data) as DraftLiveMessage);
     });
 
     socket.addEventListener('error', () => {
@@ -451,10 +511,31 @@ export class App {
     });
   }
 
+  private applyDraftLiveMessage(message: DraftLiveMessage) {
+    if ('type' in message) {
+      if (message.type === 'draftOrderReveal') {
+        this.applyDraftOrderRevealMessage(message);
+      } else if (message.type === 'draftOrderRevealComplete') {
+        this.draftOrderReveal.set(null);
+      }
+
+      return;
+    }
+
+    this.applyDraftUpdate(message);
+  }
+
   private applyDraftUpdate(response: DraftResponse) {
     const currentDraft = this.draft();
     if (!currentDraft) {
       this.draft.set(response);
+      return;
+    }
+
+    const isDraftStart = currentDraft.status === 'open' && response.status === 'started' && response.draftOrder.length > 0;
+    if (isDraftStart) {
+      this.draft.set(response);
+      this.startDraftOrderReveal(response);
       return;
     }
 
@@ -555,5 +636,42 @@ export class App {
 
     window.clearTimeout(this.draftPickFlightTimeout);
     this.draftPickFlightTimeout = null;
+  }
+
+  private startDraftOrderReveal(draft: DraftResponse) {
+    this.draftOrderReveal.set({
+      modeLabel: this.draftOrderModeLabel(draft),
+      slots: draft.draftOrder.map((userName) => ({ userName, isRevealed: false }))
+    });
+  }
+
+  private applyDraftOrderRevealMessage(message: DraftOrderRevealMessage) {
+    this.draftOrderReveal.update((reveal) => reveal
+      ? {
+          ...reveal,
+          slots: reveal.slots.map((slot, index) => ({ ...slot, isRevealed: index < message.revealedCount }))
+        }
+      : reveal);
+  }
+
+  private draftOrderModeLabel(draft: DraftResponse) {
+    const abbaTurns = this.createDraftTurnOrder(draft.draftOrder, 'abba');
+    return this.areSameOrder(draft.draftTurnOrder, abbaTurns) ? 'ABBA' : 'Round robin';
+  }
+
+  private createDraftTurnOrder(draftOrder: string[], mode: DraftOrderMode) {
+    return Array.from({ length: maxPicksPerUser }).flatMap((_, round) => (
+      mode === 'abba' && round % 2 === 1 ? [...draftOrder].reverse() : draftOrder
+    ));
+  }
+
+  private areSameOrder(left: string[], right: string[]) {
+    return left.length === right.length && left.every((value, index) => value === right[index]);
+  }
+
+  private sendDraftLiveMessage(message: object) {
+    if (this.draftSocket?.readyState === WebSocket.OPEN) {
+      this.draftSocket.send(JSON.stringify(message));
+    }
   }
 }

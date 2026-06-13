@@ -94,6 +94,7 @@ h3 {
 }
 
 .manager-picks {
+  padding: 1rem;
   border: 1px solid rgb(255 255 255 / 12%);
   border-radius: 1.25rem;
   background: rgb(255 255 255 / 7%);
@@ -244,6 +245,126 @@ h3 {
   background: #ffe2df;
   color: #7b1810;
   font-weight: 800;
+}
+
+.draft-order-mode-dialog,
+.draft-order-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 62%);
+}
+
+.draft-order-mode-panel {
+  display: grid;
+  gap: 0.85rem;
+  width: min(100%, 32rem);
+  padding: 1.25rem;
+  border: 1px solid rgb(184 233 134 / 32%);
+  border-radius: 1.25rem;
+  background: #0d2219;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 45%);
+}
+
+.draft-order-slots {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.draft-order-slot {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.slot-window {
+  display: grid;
+  align-items: center;
+  min-height: 3.5rem;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 1rem;
+  background: rgb(247 241 223 / 10%);
+}
+
+.slot-spinner,
+.slot-window strong {
+  grid-area: 1 / 1;
+  padding: 0 1rem;
+  font-size: 1.2rem;
+  font-weight: 950;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.slot-spinner {
+  color: rgb(247 241 223 / 64%);
+  animation: slot-spin 360ms linear infinite;
+}
+
+.slot-window strong {
+  color: #07140f;
+  opacity: 0;
+  transform: translateY(120%) scale(0.92);
+}
+
+.draft-order-slot.is-revealed .slot-window {
+  background: #b8e986;
+}
+
+.draft-order-slot.is-revealed .slot-spinner {
+  opacity: 0;
+  animation-play-state: paused;
+}
+
+.draft-order-slot.is-revealed .slot-window strong {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 180ms ease, transform 320ms ease;
+}
+
+@keyframes slot-spin {
+  0% {
+    transform: translateY(-130%);
+  }
+
+  100% {
+    transform: translateY(130%);
+  }
+}
+
+.draft-order-mode-panel p {
+  margin: 0;
+  color: rgb(247 241 223 / 76%);
+}
+
+.draft-order-mode-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.draft-order-mode-actions button {
+  padding: 0.65rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: #b8e986;
+  color: #07140f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+}
+
+.draft-order-mode-actions button:last-child {
+  background: rgb(255 255 255 / 12%);
+  color: #f7f1df;
 }
 
 .concept,
@@ -427,7 +548,8 @@ h3 {
 
 @media (prefers-reduced-motion: reduce) {
   .draft-pick-flight,
-  .player-slot button.just-drafted {
+  .player-slot button.just-drafted,
+  .slot-spinner {
     animation-duration: 1ms;
   }
 }
@@ -435,10 +557,6 @@ h3 {
 .draft-summary {
   display: grid;
   gap: 1rem;
-}
-
-.manager-picks {
-  padding: 1rem;
 }
 
 .manager-picks ol {

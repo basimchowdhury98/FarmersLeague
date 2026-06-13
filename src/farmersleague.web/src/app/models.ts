@@ -32,6 +32,7 @@ export type StarterResponse = {
 export type AccessResponse = {
   hasAccess: boolean;
   userName: string;
+  isAdmin: boolean;
 };
 
 export type DraftResponse = {
@@ -39,10 +40,13 @@ export type DraftResponse = {
   status: 'open' | 'started' | 'completed';
   joinedUsers: string[];
   draftOrder: string[];
+  draftTurnOrder: string[];
   picks: DraftPick[];
   currentTurn: string | null;
   isComplete: boolean;
 };
+
+export type DraftOrderMode = 'roundRobin' | 'abba';
 
 export type DraftPick = {
   userName: string;
@@ -63,6 +67,27 @@ export type DraftPickFlight = {
   height: number;
   deltaX: number;
   deltaY: number;
+};
+
+export type DraftOrderReveal = {
+  modeLabel: string;
+  slots: DraftOrderRevealSlot[];
+};
+
+export type DraftOrderRevealSlot = {
+  userName: string;
+  isRevealed: boolean;
+};
+
+export type DraftLiveMessage = DraftResponse | DraftOrderRevealMessage | DraftOrderRevealCompleteMessage;
+
+export type DraftOrderRevealMessage = {
+  type: 'draftOrderReveal';
+  revealedCount: number;
+};
+
+export type DraftOrderRevealCompleteMessage = {
+  type: 'draftOrderRevealComplete';
 };
 
 export type MatchFeedTab = 'past' | 'today' | 'upcoming';
