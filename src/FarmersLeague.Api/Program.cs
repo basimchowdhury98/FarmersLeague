@@ -345,6 +345,57 @@ app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey
     return Results.Ok(ToLiveMatchResponse(match, draft, stats));
 });
 
+app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpContext context, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
+{
+    if (!context.WebSockets.IsWebSocketRequest)
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Live match updates require a WebSocket connection"));
+    }
+
+    var draftContext = await GetDraftContext(
+        context.Request.Query["passkey"].ToString(),
+        matchId,
+        httpClientFactory,
+        cache,
+        cancellationToken);
+    if (draftContext.Error is not null)
+    {
+        return draftContext.Error;
+    }
+
+    var draft = await GetDraft(matchId, cache, cancellationToken);
+    if (draft is null || !IsDraftComplete(draft))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Match has not started yet"));
+    }
+
+    using var socket = await context.WebSockets.AcceptWebSocketAsync();
+    var lastPayload = string.Empty;
+
+    while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+    {
+        draft = await GetDraft(matchId, cache, cancellationToken);
+        if (draft is null || !IsDraftComplete(draft))
+        {
+            break;
+        }
+
+        var match = draftContext.Match!;
+        var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), httpClientFactory, cancellationToken);
+        var payload = JsonSerializer.Serialize(ToLiveMatchResponse(match, draft, stats), AppJson.Options);
+        if (!string.Equals(payload, lastPayload, StringComparison.Ordinal))
+        {
+            var bytes = Encoding.UTF8.GetBytes(payload);
+            await socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken);
+            lastPayload = payload;
+        }
+
+        await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+    }
+
+    return Results.Empty;
+});
+
 app.MapGet("/api/matches", async (IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     var matches = await GetMatches(httpClientFactory, includeLineups: false, cancellationToken);

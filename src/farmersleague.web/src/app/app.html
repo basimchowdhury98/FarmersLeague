@@ -106,7 +106,10 @@
           <div class="draft-title-block">
             <p class="eyebrow">Live match stats</p>
             <h1 data-test="live-match-title">{{ liveState.match.homeTeam }} vs {{ liveState.match.awayTeam }} Live</h1>
-            <p class="intro">First stats snapshot for every drafted squad.</p>
+            <p class="intro">Live stat updates for every drafted squad.</p>
+            @if (liveMatchLiveError()) {
+              <p class="draft-error" data-test="live-match-live-error">{{ liveMatchLiveError() }}</p>
+            }
           </div>
 
           <div class="live-squads">
@@ -137,7 +140,7 @@
                               <h4>{{ category.title }}</h4>
                               <dl>
                                 @for (stat of category.stats; track stat.key) {
-                                  <div class="live-stat-row">
+                                  <div class="live-stat-row" data-test="live-stat-row">
                                     <dt>{{ stat.label }}</dt>
                                     <dd>{{ playerStatValue(stat) }}</dd>
                                   </div>

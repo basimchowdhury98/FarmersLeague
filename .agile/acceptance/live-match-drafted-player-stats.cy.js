@@ -165,6 +165,33 @@ describe('Live match drafted player stats', () => {
     });
   });
 
+  // GIVEN a draft is complete and Alice has the live match page open
+  // WHEN the backend polls the scraper and receives updated mock stats
+  // THEN the live page updates the existing player stat row over the websocket
+  it('updates live player stats from websocket events', () => {
+    setDraft({
+      status: 'completed',
+      joinedUsers: ['Alice', 'Bob'],
+      draftOrder: ['Alice', 'Bob'],
+      picks: completedPicks()
+    });
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-player-card"]', homeStarters[1]).within(() => {
+      cy.contains('[data-test="live-stat-row"]', 'Accurate passes')
+        .invoke('text')
+        .then((firstValue) => {
+          cy.wait(12000);
+          cy.contains('[data-test="live-stat-row"]', 'Accurate passes')
+            .invoke('text')
+            .should((nextValue) => {
+              expect(nextValue.trim()).not.to.equal(firstValue.trim());
+            });
+        });
+    });
+  });
+
   // GIVEN a draft is not complete
   // WHEN Alice opens that match's live page directly
   // THEN she is not shown the live match stats page and sees a message that the match has not started yet

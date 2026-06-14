@@ -32,6 +32,7 @@ export class App {
   protected readonly draft = signal<DraftResponse | null>(null);
   protected readonly liveMatch = signal<LiveMatchResponse | null>(null);
   protected readonly liveMatchUnavailable = signal('');
+  protected readonly liveMatchLiveError = signal('');
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
   protected readonly draftPickFlight = signal<DraftPickFlight | null>(null);
@@ -45,6 +46,7 @@ export class App {
   protected readonly isAdmin = signal(false);
   protected readonly route = signal<'home' | 'draft' | 'live'>('home');
   private draftSocket: WebSocket | null = null;
+  private liveMatchSocket: WebSocket | null = null;
   private draftPickFlightId = 0;
   private activeDraftPickFlightKey = '';
   private draftPickFlightTimeout: number | null = null;
@@ -543,12 +545,15 @@ export class App {
   }
 
   private loadLiveMatch(matchId: number) {
+    this.draftSocket?.close();
     this.liveMatch.set(null);
     this.liveMatchUnavailable.set('');
+    this.liveMatchLiveError.set('');
 
     this.http.get<LiveMatchResponse>(`/api/matches/${matchId}/live?passkey=${encodeURIComponent(this.passkey())}`).subscribe({
       next: (response) => {
         this.liveMatch.set(response);
+        this.connectLiveMatchUpdates(matchId);
       },
       error: (error) => {
         const response = error.error as DraftPickErrorResponse | undefined;
@@ -557,8 +562,26 @@ export class App {
     });
   }
 
+  private connectLiveMatchUpdates(matchId: number) {
+    this.liveMatchSocket?.close();
+    this.liveMatchLiveError.set('');
+
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const socket = new WebSocket(`${protocol}://${window.location.host}/api/matches/${matchId}/live/updates?passkey=${encodeURIComponent(this.passkey())}`);
+    this.liveMatchSocket = socket;
+
+    socket.addEventListener('message', (event) => {
+      this.liveMatch.set(JSON.parse(event.data) as LiveMatchResponse);
+    });
+
+    socket.addEventListener('error', () => {
+      this.liveMatchLiveError.set('Live match updates unavailable');
+    });
+  }
+
   private connectDraftLiveUpdates(matchId: number) {
     this.draftSocket?.close();
+    this.liveMatchSocket?.close();
     this.draftLiveError.set('');
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
