@@ -206,6 +206,12 @@ partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfi
             .Where(property => property.Value.ValueKind == JsonValueKind.Object)
             .Select(property => ToPlayerStatsPlayer(property.Value))
             .ToArray();
+
+        return SelectRequestedPlayerStats(gameId, players, requestedPlayers);
+    }
+
+    private static WorldCupPlayerStatsResponse SelectRequestedPlayerStats(string gameId, IReadOnlyList<WorldCupPlayerStatsPlayerResponse> players, IReadOnlyList<string> requestedPlayers)
+    {
         var foundPlayers = new List<WorldCupPlayerStatsPlayerResponse>();
         var missingPlayers = new List<string>();
 

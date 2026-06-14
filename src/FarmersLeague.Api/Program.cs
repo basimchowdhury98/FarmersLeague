@@ -345,22 +345,13 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
 
 app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, cache, cancellationToken);
-    if (draftContext.Error is not null)
+    var liveMatch = await GetLiveMatch(passkey, matchId, httpClientFactory, cache, cancellationToken);
+    if (liveMatch.Error is not null)
     {
-        return draftContext.Error;
+        return liveMatch.Error;
     }
 
-    var draft = await GetDraft(matchId, cache, cancellationToken);
-    if (draft is null || !IsDraftComplete(draft))
-    {
-        return Results.BadRequest(new DraftPickErrorResponse("Match has not started yet"));
-    }
-
-    var match = draftContext.Match!;
-    var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), httpClientFactory, cancellationToken);
-
-    return Results.Ok(ToLiveMatchResponse(match, draft, stats));
+    return Results.Ok(liveMatch.LiveMatch);
 });
 
 app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpContext context, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken) =>
@@ -370,21 +361,11 @@ app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpCo
         return Results.BadRequest(new DraftPickErrorResponse("Live match updates require a WebSocket connection"));
     }
 
-    var draftContext = await GetDraftContext(
-        context.Request.Query["passkey"].ToString(),
-        matchId,
-        httpClientFactory,
-        cache,
-        cancellationToken);
-    if (draftContext.Error is not null)
+    var passkey = context.Request.Query["passkey"].ToString();
+    var initialLiveMatch = await GetLiveMatch(passkey, matchId, httpClientFactory, cache, cancellationToken);
+    if (initialLiveMatch.Error is not null)
     {
-        return draftContext.Error;
-    }
-
-    var draft = await GetDraft(matchId, cache, cancellationToken);
-    if (draft is null || !IsDraftComplete(draft))
-    {
-        return Results.BadRequest(new DraftPickErrorResponse("Match has not started yet"));
+        return initialLiveMatch.Error;
     }
 
     using var socket = await context.WebSockets.AcceptWebSocketAsync();
@@ -392,15 +373,13 @@ app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpCo
 
     while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
     {
-        draft = await GetDraft(matchId, cache, cancellationToken);
-        if (draft is null || !IsDraftComplete(draft))
+        var liveMatch = await GetLiveMatch(passkey, matchId, httpClientFactory, cache, cancellationToken);
+        if (liveMatch.Error is not null)
         {
             break;
         }
 
-        var match = draftContext.Match!;
-        var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), httpClientFactory, cancellationToken);
-        var payload = JsonSerializer.Serialize(ToLiveMatchResponse(match, draft, stats), AppJson.Options);
+        var payload = JsonSerializer.Serialize(liveMatch.LiveMatch, AppJson.Options);
         if (!string.Equals(payload, lastPayload, StringComparison.Ordinal))
         {
             var bytes = Encoding.UTF8.GetBytes(payload);
@@ -548,6 +527,26 @@ static async Task<PlayerStatsResponse?> GetPlayerStats(int matchId, IReadOnlyLis
 
     httpResponse.EnsureSuccessStatusCode();
     return await httpResponse.Content.ReadFromJsonAsync<PlayerStatsResponse>(AppJson.Options, cancellationToken);
+}
+
+static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken)
+{
+    var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, cache, cancellationToken);
+    if (draftContext.Error is not null)
+    {
+        return new LiveMatchResult(null, draftContext.Error);
+    }
+
+    var draft = await GetDraft(matchId, cache, cancellationToken);
+    if (draft is null || !IsDraftComplete(draft))
+    {
+        return new LiveMatchResult(null, Results.BadRequest(new DraftPickErrorResponse("Match has not started yet")));
+    }
+
+    var match = draftContext.Match!;
+    var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), httpClientFactory, cancellationToken);
+
+    return new LiveMatchResult(ToLiveMatchResponse(match, draft, stats), null);
 }
 
 static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)

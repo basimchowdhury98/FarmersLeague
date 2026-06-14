@@ -195,22 +195,26 @@
                   <p class="live-player-dialog-owner" data-test="live-player-dialog-owner">Drafted by {{ selectedOwner }}</p>
                 }
 
-                @if (selectedPlayer.categories.length > 0) {
+                @let scoringCategories = scoringLivePlayerCategories(selectedPlayer);
+                @if (scoringCategories.length > 0) {
                   <div class="live-player-stats" data-test="live-player-stats">
-                    @for (category of selectedPlayer.categories; track category.key) {
+                    @for (category of scoringCategories; track category.key) {
                       <section class="live-stat-category">
                         <h4>{{ category.title }}</h4>
                         <dl>
                           @for (stat of category.stats; track stat.key) {
                             <div class="live-stat-row" data-test="live-stat-row">
                               <dt>{{ stat.label }}</dt>
-                              <dd>{{ playerStatValue(stat) }}</dd>
+                              <dd data-test="live-stat-value">{{ playerStatValue(stat) }}</dd>
+                              <dd data-test="live-stat-points">{{ liveStatPoints(stat) }} pts</dd>
                             </div>
                           }
                         </dl>
                       </section>
                     }
                   </div>
+                } @else if (selectedPlayer.categories.length > 0) {
+                  <p class="live-player-no-stats" data-test="live-player-no-scoring-stats">No scoring stats yet</p>
                 } @else {
                   <p class="live-player-no-stats" data-test="live-player-no-stats">No stats available yet</p>
                 }

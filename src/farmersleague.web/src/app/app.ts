@@ -1,6 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
 import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
+import { livePlayerPoints, liveStatPoints, scoringLivePlayerCategories } from './live-scoring';
 import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
 
 const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
@@ -465,13 +466,7 @@ export class App {
   }
 
   protected livePlayerPoints(player: LivePlayer | null) {
-    if (!player) {
-      return 0;
-    }
-
-    return player.categories
-      .flatMap((category) => category.stats)
-      .reduce((total, stat) => total + this.numericStatValue(stat.value), 0);
+    return livePlayerPoints(player);
   }
 
   protected livePlayerPointsByName(playerName: string) {
@@ -480,6 +475,14 @@ export class App {
 
   protected liveSquadPoints(squad: LiveSquad) {
     return squad.players.reduce((total, player) => total + this.livePlayerPoints(player), 0);
+  }
+
+  protected liveStatPoints(stat: PlayerStat) {
+    return liveStatPoints(stat);
+  }
+
+  protected scoringLivePlayerCategories(player: LivePlayer) {
+    return scoringLivePlayerCategories(player);
   }
 
   protected openLivePlayerStats(playerName: string) {
@@ -499,19 +502,6 @@ export class App {
     }
 
     return `${stat.value}`;
-  }
-
-  private numericStatValue(value: unknown) {
-    if (typeof value === 'number') {
-      return Number.isFinite(value) ? value : 0;
-    }
-
-    if (typeof value === 'string' && value.trim() !== '') {
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-
-    return 0;
   }
 
   protected formationRows(lineup: LineupResponse, invertRows = false) {

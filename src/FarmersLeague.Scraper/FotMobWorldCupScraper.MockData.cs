@@ -62,25 +62,8 @@ partial class FotMobWorldCupScraper
         var players = MockLineupPlayers(lineup)
             .Select((player, index) => MockPlayerStatsPlayer(player.Team, player.Player, index, step))
             .ToArray();
-        var foundPlayers = new List<WorldCupPlayerStatsPlayerResponse>();
-        var missingPlayers = new List<string>();
 
-        foreach (var requestedPlayer in requestedPlayers.Select(player => player.Trim()).Where(player => player.Length > 0))
-        {
-            var player = players.FirstOrDefault(player => PlayerMatches(player, requestedPlayer));
-            if (player is null)
-            {
-                missingPlayers.Add(requestedPlayer);
-                continue;
-            }
-
-            if (!foundPlayers.Any(foundPlayer => foundPlayer.Id == player.Id))
-            {
-                foundPlayers.Add(player);
-            }
-        }
-
-        return new WorldCupPlayerStatsResponse(gameId, foundPlayers, missingPlayers);
+        return SelectRequestedPlayerStats(gameId, players, requestedPlayers);
     }
 
     private static IReadOnlyList<(WorldCupLineupTeamResponse Team, WorldCupLineupPlayerResponse Player)> MockLineupPlayers(WorldCupLineupResponse lineup) =>

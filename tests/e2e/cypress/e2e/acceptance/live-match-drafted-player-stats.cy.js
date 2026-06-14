@@ -10,6 +10,7 @@ describe('Live match drafted player stats', () => {
   let match;
   let matchLabel;
   let homeStarters;
+  let homeBench;
   let awayStarters;
 
   const loadDraftableMatch = () => {
@@ -26,6 +27,7 @@ describe('Live match drafted player stats', () => {
         expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)).to.equal(true);
 
         homeStarters = draft.match.lineups[0].starters.map((player) => player.name);
+        homeBench = draft.match.lineups[0].bench.map((player) => player.name);
         awayStarters = draft.match.lineups[1].starters.map((player) => player.name);
       });
     });
@@ -59,9 +61,45 @@ describe('Live match drafted player stats', () => {
     { userName: 'Bob', playerName: awayStarters[2] }
   ];
 
+  const completeDraft = () => {
+    setDraft({
+      status: 'completed',
+      joinedUsers: ['Alice', 'Bob'],
+      draftOrder: ['Alice', 'Bob'],
+      picks: completedPicks()
+    });
+  };
+
   beforeEach(() => {
     loadDraftableMatch();
     cy.then(() => cy.request('DELETE', `/api/testing/drafts/${match.id}`).its('status').should('equal', 204));
+  });
+
+  // GIVEN a drafted player has scraper stats but none of those stats contribute points
+  // WHEN Alice opens that player's live stats popup
+  // THEN she sees a no-contributing-stats message instead of empty stat categories
+  it('shows a no scoring stats message when scraper stats do not contribute points', () => {
+    setDraft({
+      status: 'completed',
+      joinedUsers: ['Alice', 'Bob'],
+      draftOrder: ['Alice', 'Bob'],
+      picks: [
+        { userName: 'Alice', playerName: homeBench[4] },
+        { userName: 'Bob', playerName: awayStarters[0] },
+        { userName: 'Alice', playerName: homeStarters[0] },
+        { userName: 'Bob', playerName: awayStarters[1] },
+        { userName: 'Alice', playerName: homeStarters[1] },
+        { userName: 'Bob', playerName: awayStarters[2] }
+      ]
+    });
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-tracker-player-card"]', homeBench[4]).click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-player-no-scoring-stats').should('be.visible').and('contain.text', 'No scoring stats yet');
+      cy.testGet('live-player-stats').should('not.exist');
+    });
   });
 
   // GIVEN Alice and Bob have an in-progress draft with one pick remaining and Bob has the draft page open
@@ -134,64 +172,59 @@ describe('Live match drafted player stats', () => {
 
   // GIVEN a draft is complete and scraper stats are available for drafted players
   // WHEN Alice opens the live match page
-  // THEN each drafted player shows every stat category and stat field returned by the scraper for that player
-  it('loads the first scraper stats state and shows all available stat fields for drafted players', () => {
-    setDraft({
-      status: 'completed',
-      joinedUsers: ['Alice', 'Bob'],
-      draftOrder: ['Alice', 'Bob'],
-      picks: completedPicks()
-    });
+  // THEN each drafted player shows scoring stat categories and stat fields that contribute points
+  it('loads the first scraper stats state and shows scoring stat fields for drafted players', () => {
+    completeDraft();
 
     cy.visit(livePath(alicePasskey));
 
     cy.testGet('live-player-card').should('have.length', 6);
-    cy.contains('[data-test="live-player-card"]', homeStarters[0]).click();
+    cy.contains('[data-test="live-player-card"]', homeStarters[1]).click();
     cy.testGet('live-player-dialog').within(() => {
       cy.testGet('live-player-team').should('contain.text', match.homeTeam);
       cy.testGet('live-player-stats').should('contain.text', 'Attack');
-      cy.testGet('live-player-stats').should('contain.text', 'Goals');
-      cy.testGet('live-player-stats').should('contain.text', 'Expected goals');
-      cy.testGet('live-player-stats').should('contain.text', 'Total shots');
-      cy.testGet('live-player-stats').should('contain.text', 'Shots on target');
       cy.testGet('live-player-stats').should('contain.text', 'Touches in opposition box');
-      cy.testGet('live-player-stats').should('contain.text', 'Passes');
-      cy.testGet('live-player-stats').should('contain.text', 'Touches');
-      cy.testGet('live-player-stats').should('contain.text', 'Accurate passes');
-      cy.testGet('live-player-stats').should('contain.text', 'Assists');
-      cy.testGet('live-player-stats').should('contain.text', 'Expected assists');
-      cy.testGet('live-player-stats').should('contain.text', 'Chances created');
       cy.testGet('live-player-stats').should('contain.text', 'Defense');
-      cy.testGet('live-player-stats').should('contain.text', 'Defensive actions');
-      cy.testGet('live-player-stats').should('contain.text', 'Tackles');
-      cy.testGet('live-player-stats').should('contain.text', 'Interceptions');
-      cy.testGet('live-player-stats').should('contain.text', 'Recoveries');
-      cy.testGet('live-player-stats').should('contain.text', 'Duels');
-      cy.testGet('live-player-stats').should('contain.text', 'Duels won');
-      cy.testGet('live-player-stats').should('contain.text', 'Duels lost');
-      cy.testGet('live-player-stats').should('contain.text', 'Ground duels won');
-      cy.testGet('live-player-stats').should('contain.text', 'Fouls');
-      cy.testGet('live-player-stats').should('contain.text', 'Was fouled');
+      cy.testGet('live-player-stats').should('contain.text', 'Clearances');
     });
   });
 
   // GIVEN a draft is complete and Alice has the live match page open
   // WHEN she opens a player's live stats popup
-  // THEN the popup shows the stat rows and placeholder points used by the live tracker
-  it('shows live stat rows and placeholder points in the player popup', () => {
-    setDraft({
-      status: 'completed',
-      joinedUsers: ['Alice', 'Bob'],
-      draftOrder: ['Alice', 'Bob'],
-      picks: completedPicks()
-    });
+  // THEN the popup shows each contributing stat row's value and points used by the live tracker
+  it('shows contributing live stat rows and points in the player popup', () => {
+    completeDraft();
 
     cy.visit(livePath(alicePasskey));
 
     cy.contains('[data-test="live-player-card"]', homeStarters[1]).click();
     cy.testGet('live-player-dialog').within(() => {
       cy.testGet('live-player-dialog-points').should('contain.text', 'pts');
-      cy.contains('[data-test="live-stat-row"]', 'Accurate passes').should('be.visible');
+      cy.contains('[data-test="live-stat-row"]', 'Touches in opposition box').within(() => {
+        cy.testGet('live-stat-value').should('not.be.empty');
+        cy.testGet('live-stat-points').should('contain.text', 'pts');
+      });
+    });
+  });
+
+  // GIVEN a drafted player has live stats with both scoring and non-scoring stat rows
+  // WHEN Alice opens that player's live stats popup
+  // THEN only stat rows with a non-zero point contribution are shown
+  it('hides stat rows that do not contribute points', () => {
+    completeDraft();
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-player-card"]', homeStarters[1]).click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.contains('[data-test="live-stat-row"]', 'Touches in opposition box').should('be.visible');
+      cy.contains('[data-test="live-stat-row"]', 'Clearances').should('be.visible');
+      cy.contains('[data-test="live-stat-row"]', 'Accurate passes').should('not.exist');
+      cy.contains('[data-test="live-stat-row"]', 'Expected goals').should('not.exist');
+      cy.contains('[data-test="live-stat-row"]', 'Goals prevented').should('not.exist');
+      cy.testGet('live-stat-points').each(($points) => {
+        expect($points.text().trim()).not.to.equal('0 pts');
+      });
     });
   });
 
