@@ -85,10 +85,15 @@ app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, IHt
 
 app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftAccessRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
+    }
+
+    if (HasMatchStarted(draftContext.Match!))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Draft can't be created since match has started or ended"));
     }
 
     if (RequireAdmin(draftContext) is { } forbidden)
@@ -133,10 +138,15 @@ app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftAccessReq
 
 app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftStartRequest request, IHttpClientFactory httpClientFactory, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
+    var draftContext = await GetDraftContext(request.Passkey, matchId, httpClientFactory, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
+    }
+
+    if (HasMatchStarted(draftContext.Match!))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Draft can't be started since match has started"));
     }
 
     if (RequireAdmin(draftContext) is { } forbidden)
@@ -319,6 +329,14 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     {
         Picks = draft.Picks.Concat([new DraftPick(userName, request.PlayerName)]).ToArray()
     };
+
+    if (IsDraftComplete(updatedDraft) && HasMatchStarted(match))
+    {
+        await cache.RemoveAsync(DraftCacheKey(matchId), cancellationToken);
+        await liveDraftConnections.Broadcast(matchId, ToDraftResponse(match, NewOpenDraftState([])), cancellationToken);
+
+        return Results.BadRequest(new DraftPickErrorResponse("Live match cannot be created since the actual match has started"));
+    }
 
     var updatedResponse = await SaveAndBroadcastDraft(matchId, match, updatedDraft, cache, liveDraftConnections, cancellationToken);
 
@@ -635,7 +653,7 @@ static bool IsDraftComplete(DraftState draft)
     return totalTurnCount > 0 && draft.Picks.Count >= totalTurnCount;
 }
 
-static bool HasMatchStarted(MatchResponse match) => match.Date <= DateTimeOffset.UtcNow;
+static bool HasMatchStarted(MatchResponse match) => match.HasStarted || match.HasFinished;
 
 static bool HasConfirmedFullSquads(MatchResponse match) =>
     match.Lineups.Count >= 2
@@ -711,7 +729,9 @@ static MatchResponse? ToScraperMatchResponse(WorldCupGameResponse game)
         game.AwayTeam.Name,
         "FIFA World Cup",
         game.StartTimeUtc,
-        []);
+        [],
+        game.Status.Started,
+        game.Status.Finished);
 }
 
 static LineupResponse ToScraperLineupResponse(WorldCupLineupTeamResponse lineup) => new(
@@ -788,7 +808,8 @@ static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? dr
     match.Date,
     match.Lineups,
     draft is null ? null : ToDraftResponse(match, draft),
-    HasMatchStarted(match));
+    match.HasStarted,
+    match.HasFinished);
 
 static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, PlayerStatsResponse? stats)
 {

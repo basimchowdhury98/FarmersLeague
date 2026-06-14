@@ -3,6 +3,8 @@ import { Component, computed, signal } from '@angular/core';
 import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
 import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
 
+const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
+
 @Component({
   selector: 'app-root',
   imports: [],
@@ -14,6 +16,7 @@ export class App {
   protected readonly hello = signal('Loading API greeting...');
   protected readonly matches = signal<MatchResponse[]>([]);
   protected readonly matchesLoaded = signal(false);
+  protected readonly homeError = signal('');
   protected readonly matchFeedTab = signal<MatchFeedTab>('upcoming');
   protected readonly upcomingDateIndex = signal(0);
   protected readonly upcomingDateKeys = computed(() => this.uniqueDateKeys(this.upcomingMatches()));
@@ -241,8 +244,12 @@ export class App {
   }
 
   protected matchDraftStatus(match: MatchResponse) {
+    if (this.hasMatchFinished(match)) {
+      return 'Match ended';
+    }
+
     if (this.hasMatchStarted(match)) {
-      return 'Match started';
+      return 'Match ongoing';
     }
 
     if (!match.draft) {
@@ -257,23 +264,31 @@ export class App {
   }
 
   protected canCreateDraft(match: MatchResponse) {
-    return this.canManageDraftLifecycle() && !this.hasMatchStarted(match) && !match.draft;
+    return this.canManageDraftLifecycle() && !this.hasMatchStartedOrFinished(match) && !match.draft;
   }
 
   protected canJoinDraft(match: MatchResponse) {
-    return !this.hasMatchStarted(match) && match.draft?.status === 'open' && !match.draft.joinedUsers.includes(this.userName());
+    return !this.hasMatchStartedOrFinished(match) && match.draft?.status === 'open' && !match.draft.joinedUsers.includes(this.userName());
   }
 
   protected canCancelDraft(match: MatchResponse) {
-    return this.canManageDraftLifecycle() && !this.hasMatchStarted(match) && !!match.draft && !match.draft.isComplete && match.draft.status !== 'completed';
+    return this.canManageDraftLifecycle() && !this.hasMatchStartedOrFinished(match) && !!match.draft && !match.draft.isComplete && match.draft.status !== 'completed';
   }
 
   protected hasMatchStarted(match: MatchResponse) {
-    return match.hasStarted === true || new Date(match.date).getTime() <= Date.now();
+    return match.hasStarted === true;
+  }
+
+  protected hasMatchFinished(match: MatchResponse) {
+    return match.hasFinished === true;
+  }
+
+  protected hasMatchStartedOrFinished(match: MatchResponse) {
+    return this.hasMatchStarted(match) || this.hasMatchFinished(match);
   }
 
   protected canOpenDraft(match: MatchResponse) {
-    return !this.hasMatchStarted(match) || !!match.draft;
+    return !this.hasMatchStartedOrFinished(match) || !!match.draft;
   }
 
   protected hasConfirmedFullSquads(match: MatchResponse) {
@@ -290,7 +305,7 @@ export class App {
   }
 
   protected canStartDraft(draft: DraftResponse) {
-    return this.canManageDraftLifecycle() && draft.joinedUsers.length >= 2 && this.hasConfirmedFullSquads(draft.match);
+    return this.canManageDraftLifecycle() && !this.hasMatchStartedOrFinished(draft.match) && draft.joinedUsers.length >= 2 && this.hasConfirmedFullSquads(draft.match);
   }
 
   protected canShowStartDraft(draft: DraftResponse) {
@@ -395,7 +410,13 @@ export class App {
       },
       error: (error) => {
         const response = error.error as DraftPickErrorResponse | undefined;
-        this.draftError.set(response?.message ?? 'Unable to draft player');
+        const message = response?.message ?? 'Unable to draft player';
+        if (message === liveMatchStartedError) {
+          this.navigateHomeWithError(message);
+          return;
+        }
+
+        this.draftError.set(message);
       }
     });
   }
@@ -599,6 +620,17 @@ export class App {
     });
   }
 
+  private navigateHomeWithError(message: string) {
+    this.draftSocket?.close();
+    this.liveMatchSocket?.close();
+    this.draft.set(null);
+    this.liveMatch.set(null);
+    this.homeError.set(message);
+    this.route.set('home');
+    window.history.pushState({}, '', `/${this.passkey()}`);
+    this.loadHomePage();
+  }
+
   private loadLiveMatch(matchId: number) {
     this.draftSocket?.close();
     this.liveMatch.set(null);
@@ -684,6 +716,11 @@ export class App {
 
     if (!currentDraft.isComplete && response.isComplete) {
       this.openLiveMatch(response.match.id);
+      return;
+    }
+
+    if (currentDraft.status === 'started' && response.status === 'open' && response.joinedUsers.length === 0) {
+      this.navigateHomeWithError(liveMatchStartedError);
       return;
     }
 

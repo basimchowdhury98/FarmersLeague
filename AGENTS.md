@@ -9,6 +9,7 @@ Scraper API overview:
 - The main app calls the scraper for World Cup games, confirmed lineups, and player stats.
 - `/api/matches` should stay lightweight: it lists matches without fetching lineups.
 - Draft-specific API calls fetch lineups for the selected match, so the draft page has starters and bench data.
+- If the scraper API does not provide the right information for a scraper-backed feature, pause and ask for a scraper API update rather than deriving the behavior another way.
 
 Scraper mock mode:
 - Enable with `FotMob__MockMode=true` in Docker/env config, or `--FotMob:MockMode=true` when running the scraper directly.

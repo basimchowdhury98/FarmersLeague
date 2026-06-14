@@ -535,14 +535,17 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
-  it('does not allow draft actions after the match kickoff time has passed', () => {
+  // GIVEN the local clock is past kickoff but the scraper still says the match has not started
+  // WHEN Alice opens the home page
+  // THEN draft actions remain based on the scraper status rather than the local kickoff time
+  it('keeps draft actions available after kickoff time until the scraper says the match has started', () => {
     cy.clock(new Date(match.date).getTime() + 60 * 1000, ['Date']);
 
     cy.visit(`/${alicePasskey}`);
 
     matchCard().within(() => {
-      cy.testGet('match-draft-status').should('contain.text', 'Match started');
-      cy.testGet('create-draft-button').should('not.exist');
+      cy.testGet('match-draft-status').should('contain.text', 'No draft yet');
+      cy.testGet('create-draft-button').should('be.visible');
       cy.testGet('join-draft-button').should('not.exist');
       cy.testGet('cancel-draft-button').should('not.exist');
       cy.testGet('start-draft-button').should('not.exist');

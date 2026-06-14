@@ -11,6 +11,7 @@ export type MatchResponse = {
   lineups: LineupResponse[];
   draft?: DraftResponse | null;
   hasStarted?: boolean;
+  hasFinished?: boolean;
 };
 
 export type LineupResponse = {

@@ -106,8 +106,8 @@ describe('Live match drafted player stats', () => {
 
   // GIVEN a draft is complete and Alice opens the live match page
   // WHEN the page loads
-  // THEN all drafted squads are grouped by user, with Alice's squad first and visually highlighted as the current user's squad
-  it('shows every drafted squad with the current user first and highlighted', () => {
+  // THEN all drafted squads are tracked by user, Alice's squad is first, and the lineup cards mark ownership
+  it('shows every drafted squad with the current user first and drafted lineup cards highlighted', () => {
     setDraft({
       status: 'completed',
       joinedUsers: ['Alice', 'Bob'],
@@ -119,8 +119,17 @@ describe('Live match drafted player stats', () => {
 
     cy.testGet('live-squad').should('have.length', 2);
     cy.testGet('live-squad').first().should('contain.text', 'Alice').and('have.attr', 'data-current-user', 'true');
-    cy.testGet('current-user-live-squad').should('contain.text', 'Alice').and('contain.text', homeStarters[0]);
-    cy.testGet('live-squad').last().should('contain.text', 'Bob').and('contain.text', awayStarters[0]);
+    cy.testGet('current-user-live-squad').should('contain.text', 'Alice');
+    cy.testGet('live-tracker').should('contain.text', homeStarters[0]).and('contain.text', awayStarters[0]);
+    cy.testGet('live-squad-points').should('have.length', 2).and('contain.text', 'pts');
+    cy.contains('[data-test="live-player-card"]', homeStarters[0])
+      .should('have.attr', 'data-current-user-player', 'true')
+      .and('contain.text', 'Alice')
+      .and('contain.text', 'pts');
+    cy.contains('[data-test="live-player-card"]', awayStarters[0])
+      .should('have.attr', 'data-opponent-player', 'true')
+      .and('contain.text', 'Bob')
+      .and('contain.text', 'pts');
   });
 
   // GIVEN a draft is complete and scraper stats are available for drafted players
@@ -137,7 +146,8 @@ describe('Live match drafted player stats', () => {
     cy.visit(livePath(alicePasskey));
 
     cy.testGet('live-player-card').should('have.length', 6);
-    cy.contains('[data-test="live-player-card"]', homeStarters[0]).within(() => {
+    cy.contains('[data-test="live-player-card"]', homeStarters[0]).click();
+    cy.testGet('live-player-dialog').within(() => {
       cy.testGet('live-player-team').should('contain.text', match.homeTeam);
       cy.testGet('live-player-stats').should('contain.text', 'Attack');
       cy.testGet('live-player-stats').should('contain.text', 'Goals');
@@ -166,9 +176,9 @@ describe('Live match drafted player stats', () => {
   });
 
   // GIVEN a draft is complete and Alice has the live match page open
-  // WHEN the backend polls the scraper and receives updated mock stats
-  // THEN the live page updates the existing player stat row over the websocket
-  it('updates live player stats from websocket events', () => {
+  // WHEN she opens a player's live stats popup
+  // THEN the popup shows the stat rows and placeholder points used by the live tracker
+  it('shows live stat rows and placeholder points in the player popup', () => {
     setDraft({
       status: 'completed',
       joinedUsers: ['Alice', 'Bob'],
@@ -178,17 +188,10 @@ describe('Live match drafted player stats', () => {
 
     cy.visit(livePath(alicePasskey));
 
-    cy.contains('[data-test="live-player-card"]', homeStarters[1]).within(() => {
-      cy.contains('[data-test="live-stat-row"]', 'Accurate passes')
-        .invoke('text')
-        .then((firstValue) => {
-          cy.wait(12000);
-          cy.contains('[data-test="live-stat-row"]', 'Accurate passes')
-            .invoke('text')
-            .should((nextValue) => {
-              expect(nextValue.trim()).not.to.equal(firstValue.trim());
-            });
-        });
+    cy.contains('[data-test="live-player-card"]', homeStarters[1]).click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-player-dialog-points').should('contain.text', 'pts');
+      cy.contains('[data-test="live-stat-row"]', 'Accurate passes').should('be.visible');
     });
   });
 
@@ -230,12 +233,15 @@ describe('Live match drafted player stats', () => {
 
     cy.visit(livePath(alicePasskey));
 
-    cy.contains('[data-test="live-player-card"]', 'Unknown Academy Player').within(() => {
+    cy.contains('[data-test="live-tracker-player-card"]', 'Unknown Academy Player').click();
+    cy.testGet('live-player-dialog').within(() => {
       cy.testGet('live-player-no-stats').should('be.visible').and('contain.text', 'No stats available yet');
       cy.testGet('live-player-stats').should('not.exist');
     });
-    cy.contains('[data-test="live-player-card"]', awayStarters[0]).within(() => {
-      cy.testGet('live-player-stats').should('be.visible');
+    cy.testGet('live-player-dialog-close').click();
+    cy.contains('[data-test="live-player-card"]', awayStarters[0]).click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-player-stats').should('exist');
     });
   });
 

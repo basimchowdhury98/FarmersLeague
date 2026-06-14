@@ -20,6 +20,9 @@
         </div>
 
         <p class="scoreboard-greeting" data-test="api-greeting">{{ homeGreeting() }}</p>
+        @if (homeError()) {
+          <p class="draft-error" data-test="home-error">{{ homeError() }}</p>
+        }
 
         <nav class="scoreboard-tabs" aria-label="Match feed filters">
           <button

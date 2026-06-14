@@ -100,7 +100,29 @@ app.MapPost("/api/world-cup-2026/games/{gameId}/player-stats", async (string gam
     }
 });
 
+app.MapPost("/api/testing/world-cup-2026/games/reset", async (WorldCupGamesCache gamesCache, CancellationToken cancellationToken) =>
+{
+    FotMobWorldCupScraper.ResetMockGameStatus();
+    await gamesCache.TryHydrate("testing reset", force: true, cancellationToken);
+
+    return Results.NoContent();
+});
+
+app.MapPut("/api/testing/world-cup-2026/games/{gameId}/status", async (string gameId, TestingGameStatusRequest request, WorldCupGamesCache gamesCache, CancellationToken cancellationToken) =>
+{
+    if (!FotMobWorldCupScraper.SetMockGameStatus(gameId, request.Started, request.Finished))
+    {
+        return Results.NotFound(new { title = "Mock game not found" });
+    }
+
+    await gamesCache.TryHydrate("testing status override", force: true, cancellationToken);
+
+    return Results.NoContent();
+});
+
 app.Run();
+
+record TestingGameStatusRequest(bool Started, bool Finished);
 
 partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory, IConfiguration configuration)
 {

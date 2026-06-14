@@ -1,10 +1,27 @@
+using System.Collections.Concurrent;
+
 partial class FotMobWorldCupScraper
 {
     private const string MockGameId = "1001";
     private const string MockNoLineupGameId = "1002";
     private const string FixtureGameId = "1001";
+    private static readonly ConcurrentDictionary<string, WorldCupGameStatusResponse> MockGameStatusOverrides = new(StringComparer.Ordinal);
 
-    private static IReadOnlyList<WorldCupGameResponse> MockGames() =>
+    public static void ResetMockGameStatus() => MockGameStatusOverrides.Clear();
+
+    public static bool SetMockGameStatus(string gameId, bool started, bool finished)
+    {
+        if (!MockGames().Any(game => string.Equals(game.Id, gameId, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        MockGameStatusOverrides[gameId] = new WorldCupGameStatusResponse(started, finished, null, "Mock mode override", null);
+
+        return true;
+    }
+
+    private static IReadOnlyList<WorldCupGameResponse> MockGames() => ApplyMockStatusOverrides(
     [
         new(
             MockGameId,
@@ -24,7 +41,12 @@ partial class FotMobWorldCupScraper
             "Group stage",
             DateTimeOffset.UtcNow.AddMinutes(60),
             new WorldCupGameStatusResponse(false, false, null, "Mock mode", null))
-    ];
+    ]);
+
+    private static IReadOnlyList<WorldCupGameResponse> ApplyMockStatusOverrides(IReadOnlyList<WorldCupGameResponse> games) =>
+        games
+            .Select(game => MockGameStatusOverrides.TryGetValue(game.Id, out var status) ? game with { Status = status } : game)
+            .ToArray();
 
     private static WorldCupLineupResponse MockLineup() => new(
         MockGameId,
