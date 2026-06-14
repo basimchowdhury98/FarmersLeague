@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
 import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
-import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchResponse, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
+import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
 
 @Component({
   selector: 'app-root',
@@ -33,6 +33,7 @@ export class App {
   protected readonly liveMatch = signal<LiveMatchResponse | null>(null);
   protected readonly liveMatchUnavailable = signal('');
   protected readonly liveMatchLiveError = signal('');
+  protected readonly selectedLivePlayer = signal<LivePlayer | null>(null);
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
   protected readonly draftPickFlight = signal<DraftPickFlight | null>(null);
@@ -430,12 +431,66 @@ export class App {
     return squad.userName === this.userName();
   }
 
+  protected livePlayerOwner(playerName: string) {
+    return this.liveMatch()?.squads.find((squad) => squad.players.some((player) => player.name === playerName))?.userName ?? null;
+  }
+
+  protected livePlayerByName(playerName: string) {
+    return this.liveMatch()?.squads.flatMap((squad) => squad.players).find((player) => player.name === playerName) ?? null;
+  }
+
+  protected isLivePlayerCurrentUser(playerName: string) {
+    return this.livePlayerOwner(playerName) === this.userName();
+  }
+
+  protected livePlayerPoints(player: LivePlayer | null) {
+    if (!player) {
+      return 0;
+    }
+
+    return player.categories
+      .flatMap((category) => category.stats)
+      .reduce((total, stat) => total + this.numericStatValue(stat.value), 0);
+  }
+
+  protected livePlayerPointsByName(playerName: string) {
+    return this.livePlayerPoints(this.livePlayerByName(playerName));
+  }
+
+  protected liveSquadPoints(squad: LiveSquad) {
+    return squad.players.reduce((total, player) => total + this.livePlayerPoints(player), 0);
+  }
+
+  protected openLivePlayerStats(playerName: string) {
+    const player = this.livePlayerByName(playerName);
+    if (player) {
+      this.selectedLivePlayer.set(player);
+    }
+  }
+
+  protected closeLivePlayerStats() {
+    this.selectedLivePlayer.set(null);
+  }
+
   protected playerStatValue(stat: PlayerStat) {
     if (stat.value === null || stat.value === undefined || stat.value === '') {
       return '—';
     }
 
     return `${stat.value}`;
+  }
+
+  private numericStatValue(value: unknown) {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : 0;
+    }
+
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    return 0;
   }
 
   protected formationRows(lineup: LineupResponse, invertRows = false) {
@@ -552,7 +607,7 @@ export class App {
 
     this.http.get<LiveMatchResponse>(`/api/matches/${matchId}/live?passkey=${encodeURIComponent(this.passkey())}`).subscribe({
       next: (response) => {
-        this.liveMatch.set(response);
+        this.applyLiveMatchUpdate(response);
         this.connectLiveMatchUpdates(matchId);
       },
       error: (error) => {
@@ -571,12 +626,21 @@ export class App {
     this.liveMatchSocket = socket;
 
     socket.addEventListener('message', (event) => {
-      this.liveMatch.set(JSON.parse(event.data) as LiveMatchResponse);
+      this.applyLiveMatchUpdate(JSON.parse(event.data) as LiveMatchResponse);
     });
 
     socket.addEventListener('error', () => {
       this.liveMatchLiveError.set('Live match updates unavailable');
     });
+  }
+
+  private applyLiveMatchUpdate(response: LiveMatchResponse) {
+    const selectedPlayerName = this.selectedLivePlayer()?.name;
+    this.liveMatch.set(response);
+
+    if (selectedPlayerName) {
+      this.selectedLivePlayer.set(this.livePlayerByName(selectedPlayerName));
+    }
   }
 
   private connectDraftLiveUpdates(matchId: number) {

@@ -574,12 +574,17 @@ h3 {
   gap: 1.25rem;
 }
 
-.live-squads,
-.live-player-grid {
+.live-tracker,
+.live-tracker-players {
   display: grid;
   gap: 1rem;
 }
 
+.live-tracker {
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.live-tracker-squad,
 .live-squad {
   padding: 1rem;
   border: 1px solid rgb(255 255 255 / 12%);
@@ -587,34 +592,105 @@ h3 {
   background: rgb(255 255 255 / 7%);
 }
 
+.live-tracker-squad.current-user-live-squad,
 .live-squad.current-user-live-squad {
   border-color: #b8e986;
   background: rgb(184 233 134 / 14%);
   box-shadow: 0 0 0 1px rgb(184 233 134 / 24%);
 }
 
-.live-squad h2 {
-  margin-bottom: 0.85rem;
-}
-
-.live-player-card {
-  display: grid;
-  gap: 0.75rem;
-  padding: 0.9rem;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 1rem;
-  background: rgb(7 20 15 / 52%);
-}
-
-.live-player-heading {
+.live-tracker-heading,
+.live-player-dialog-heading {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 1rem;
 }
 
-.live-player-heading span,
+.live-tracker-heading h2,
+.live-player-dialog-heading h2 {
+  margin: 0;
+}
+
+.live-tracker-heading strong,
+.live-player-dialog-heading strong {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: #b8e986;
+  color: #07140f;
+  font-weight: 950;
+}
+
+.live-tracker-players {
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.live-tracker-players button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.65rem 0;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 9%);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.live-tracker-players button:hover,
+.live-tracker-players button:focus-visible {
+  color: #b8e986;
+}
+
+.live-lineups {
+  margin-top: 0;
+}
+
+.live-pitch .player-slot button {
+  border-width: 2px;
+}
+
+.live-pitch .player-slot button:disabled {
+  background: rgb(255 255 255 / 62%);
+  opacity: 0.5;
+}
+
+.live-pitch .player-slot button.live-player-current-user,
+.live-pitch .player-slot button.live-player-opponent {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.live-pitch .player-slot button.live-player-current-user {
+  border-color: #b8e986;
+  box-shadow: 0 0 0 3px rgb(184 233 134 / 34%), 0 14px 30px rgb(0 0 0 / 24%);
+}
+
+.live-pitch .player-slot button.live-player-opponent {
+  border-color: #ff6b63;
+  box-shadow: 0 0 0 3px rgb(255 107 99 / 30%), 0 14px 30px rgb(0 0 0 / 24%);
+}
+
+.live-pitch .player-slot button:not(:disabled):hover,
+.live-pitch .player-slot button:not(:disabled):focus-visible {
+  transform: translateY(-3px) scale(1.02);
+}
+
+.live-pitch .player-slot button.live-player-current-user small {
+  color: #17623d;
+}
+
+.live-pitch .player-slot button.live-player-opponent small {
+  color: #9f2119;
+}
+
 .live-player-no-stats {
   color: rgb(247 241 223 / 68%);
   font-weight: 800;
@@ -658,6 +734,48 @@ h3 {
   font-weight: 950;
 }
 
+.live-player-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 66%);
+}
+
+.live-player-dialog-panel {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 42rem);
+  max-height: min(88vh, 48rem);
+  overflow: auto;
+  padding: 1.25rem;
+  border: 1px solid rgb(184 233 134 / 32%);
+  border-radius: 1.25rem;
+  background: #0d2219;
+  box-shadow: 0 24px 70px rgb(0 0 0 / 45%);
+}
+
+.live-player-dialog-heading p,
+.live-player-dialog-owner {
+  margin: 0.25rem 0 0;
+  color: rgb(247 241 223 / 72%);
+  font-weight: 850;
+}
+
+.live-player-dialog-close {
+  justify-self: start;
+  padding: 0.65rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: #b8e986;
+  color: #07140f;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 950;
+}
+
 @media (min-width: 720px) {
   .shell {
     padding: 3rem 1.5rem 5rem;
@@ -669,10 +787,6 @@ h3 {
 
   .draft-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .live-player-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
 }

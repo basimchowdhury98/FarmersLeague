@@ -112,53 +112,110 @@
             }
           </div>
 
-          <div class="live-squads">
+          <section class="live-tracker" data-test="live-tracker" aria-label="Live player points tracker">
             @for (squad of liveSquads(); track squad.userName) {
               <article
-                class="live-squad"
+                class="live-tracker-squad"
                 data-test="live-squad"
                 [class.current-user-live-squad]="isCurrentUserSquad(squad)"
                 [attr.data-current-user]="isCurrentUserSquad(squad) ? 'true' : null"
               >
-                <div [attr.data-test]="isCurrentUserSquad(squad) ? 'current-user-live-squad' : null">
-                  <h2>{{ squad.userName }}{{ isCurrentUserSquad(squad) ? ' · Your squad' : '' }}</h2>
-
-                  <div class="live-player-grid">
-                  @for (player of squad.players; track player.name) {
-                    <article class="live-player-card" data-test="live-player-card">
-                      <div class="live-player-heading">
-                        <h3>{{ player.name }}</h3>
-                        @if (player.teamName) {
-                          <span data-test="live-player-team">{{ player.teamName }}</span>
-                        }
-                      </div>
-
-                      @if (player.categories.length > 0) {
-                        <div class="live-player-stats" data-test="live-player-stats">
-                          @for (category of player.categories; track category.key) {
-                            <section class="live-stat-category">
-                              <h4>{{ category.title }}</h4>
-                              <dl>
-                                @for (stat of category.stats; track stat.key) {
-                                  <div class="live-stat-row" data-test="live-stat-row">
-                                    <dt>{{ stat.label }}</dt>
-                                    <dd>{{ playerStatValue(stat) }}</dd>
-                                  </div>
-                                }
-                              </dl>
-                            </section>
-                          }
-                        </div>
-                      } @else {
-                        <p class="live-player-no-stats" data-test="live-player-no-stats">No stats available yet</p>
-                      }
-                    </article>
-                  }
-                  </div>
+                <div class="live-tracker-heading" [attr.data-test]="isCurrentUserSquad(squad) ? 'current-user-live-squad' : null">
+                  <h2>{{ squad.userName }}{{ isCurrentUserSquad(squad) ? ' · You' : '' }}</h2>
+                  <strong data-test="live-squad-points">{{ liveSquadPoints(squad) }} pts</strong>
                 </div>
+                <ol class="live-tracker-players">
+                  @for (player of squad.players; track player.name) {
+                    <li data-test="live-tracker-player">
+                      <button type="button" data-test="live-tracker-player-card" (click)="openLivePlayerStats(player.name)">
+                        <span>{{ player.name }}</span>
+                        <strong data-test="live-player-points">{{ livePlayerPoints(player) }} pts</strong>
+                      </button>
+                    </li>
+                  }
+                </ol>
               </article>
             }
-          </div>
+          </section>
+
+          <section class="concept split-match live-lineups" aria-label="Live match lineups">
+            <div class="mega-pitch live-pitch">
+              @for (lineup of liveState.match.lineups; track lineup.teamName) {
+                <article class="lineup split-team" [attr.data-test]="'live-lineup-' + lineup.teamName">
+                  <h2>{{ lineup.teamName }} Starting 11 <span>{{ lineup.formation }}</span></h2>
+                  @for (row of displayedLineupRows(lineup, lineup.teamName === liveState.match.awayTeam); track $index) {
+                    <div [class]="hasFormationGrid(lineup) ? 'formation-row compact-row' : 'fallback-starters'">
+                      @for (starter of row; track starter.name) {
+                        @let owner = livePlayerOwner(starter.name);
+                        <div class="draft-player player-slot compact live-player-slot" data-test="live-lineup-player">
+                          <button
+                            type="button"
+                            [class.live-player-current-user]="owner && isLivePlayerCurrentUser(starter.name)"
+                            [class.live-player-opponent]="owner && !isLivePlayerCurrentUser(starter.name)"
+                            [disabled]="!owner"
+                            [attr.data-test]="owner ? 'live-player-card' : null"
+                            [attr.data-owner]="owner"
+                            [attr.data-current-user-player]="owner && isLivePlayerCurrentUser(starter.name) ? 'true' : null"
+                            [attr.data-opponent-player]="owner && !isLivePlayerCurrentUser(starter.name) ? 'true' : null"
+                            (click)="openLivePlayerStats(starter.name)"
+                          >
+                            <span>{{ starter.name }}</span>
+                            @if (owner) {
+                              <small data-test="live-player-owner">{{ owner }} · {{ livePlayerPointsByName(starter.name) }} pts</small>
+                            } @else {
+                              <small>Undrafted</small>
+                            }
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </article>
+              }
+            </div>
+          </section>
+
+          @if (selectedLivePlayer(); as selectedPlayer) {
+            <section class="live-player-dialog" data-test="live-player-dialog" role="dialog" aria-modal="true" aria-labelledby="live-player-dialog-heading" (click)="closeLivePlayerStats()">
+              <div class="live-player-dialog-panel" (click)="$event.stopPropagation()">
+                <div class="live-player-dialog-heading">
+                  <div>
+                    <p class="eyebrow">Player stats</p>
+                    <h2 id="live-player-dialog-heading">{{ selectedPlayer.name }}</h2>
+                    @if (selectedPlayer.teamName) {
+                      <p data-test="live-player-team">{{ selectedPlayer.teamName }}</p>
+                    }
+                  </div>
+                  <strong data-test="live-player-dialog-points">{{ livePlayerPoints(selectedPlayer) }} pts</strong>
+                </div>
+                @if (livePlayerOwner(selectedPlayer.name); as selectedOwner) {
+                  <p class="live-player-dialog-owner" data-test="live-player-dialog-owner">Drafted by {{ selectedOwner }}</p>
+                }
+
+                @if (selectedPlayer.categories.length > 0) {
+                  <div class="live-player-stats" data-test="live-player-stats">
+                    @for (category of selectedPlayer.categories; track category.key) {
+                      <section class="live-stat-category">
+                        <h4>{{ category.title }}</h4>
+                        <dl>
+                          @for (stat of category.stats; track stat.key) {
+                            <div class="live-stat-row" data-test="live-stat-row">
+                              <dt>{{ stat.label }}</dt>
+                              <dd>{{ playerStatValue(stat) }}</dd>
+                            </div>
+                          }
+                        </dl>
+                      </section>
+                    }
+                  </div>
+                } @else {
+                  <p class="live-player-no-stats" data-test="live-player-no-stats">No stats available yet</p>
+                }
+
+                <button type="button" class="live-player-dialog-close" data-test="live-player-dialog-close" (click)="closeLivePlayerStats()">Close</button>
+              </div>
+            </section>
+          }
         </section>
       } @else {
         <section class="hero">
