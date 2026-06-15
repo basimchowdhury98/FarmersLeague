@@ -1,3 +1,10 @@
+.points-value{position:relative;overflow:visible}
+.point-change{position:absolute;right:0;bottom:100%;padding:.2rem .45rem;border-radius:999px;background:#b8e986;color:#07140f;font-size:.74rem;font-weight:950;white-space:nowrap;pointer-events:none;animation:point-change 2.2s ease-out forwards}
+.point-change.down{background:#ff6b63;color:#fff7f5}
+@keyframes point-change{0%{opacity:0;transform:translateY(.25rem) scale(.9)}18%,70%{opacity:1}to{opacity:0;transform:translateY(-1.2rem) scale(1.05)}}
+
+@media (prefers-reduced-motion: reduce) {.point-change{animation-duration:1ms}}
+
 .scoreboard {
   min-height: calc(100vh - 4rem);
   max-width: 34rem;

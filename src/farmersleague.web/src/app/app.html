@@ -132,7 +132,17 @@
                     <li data-test="live-tracker-player">
                       <button type="button" data-test="live-tracker-player-card" (click)="openLivePlayerStats(player.name)">
                         <span>{{ player.name }}</span>
-                        <strong data-test="live-player-points">{{ livePlayerPoints(player) }} pts</strong>
+                        <strong class="points-value" data-test="live-player-points">
+                          {{ livePlayerPoints(player) }} pts
+                          @for (change of livePointChangesForPlayer(player.name); track change.id) {
+                            <span
+                              class="point-change"
+                              data-test="live-point-change"
+                              [class.down]="change.delta < 0"
+                              aria-live="polite"
+                            >{{ livePointChangeText(change.delta) }}</span>
+                          }
+                        </strong>
                       </button>
                     </li>
                   }
@@ -164,7 +174,17 @@
                           >
                             <span>{{ starter.name }}</span>
                             @if (owner) {
-                              <small data-test="live-player-owner">{{ owner }} · {{ livePlayerPointsByName(starter.name) }} pts</small>
+                              <small class="points-value" data-test="live-player-owner">
+                                {{ owner }} · {{ livePlayerPointsByName(starter.name) }} pts
+                                @for (change of livePointChangesForPlayer(starter.name); track change.id) {
+                                  <span
+                                    class="point-change"
+                                    data-test="live-point-change"
+                                    [class.down]="change.delta < 0"
+                                    aria-live="polite"
+                                  >{{ livePointChangeText(change.delta) }}</span>
+                                }
+                              </small>
                             } @else {
                               <small>Undrafted</small>
                             }
@@ -189,7 +209,17 @@
                       <p data-test="live-player-team">{{ selectedPlayer.teamName }}</p>
                     }
                   </div>
-                  <strong data-test="live-player-dialog-points">{{ livePlayerPoints(selectedPlayer) }} pts</strong>
+                  <strong class="points-value" data-test="live-player-dialog-points">
+                    {{ livePlayerPoints(selectedPlayer) }} pts
+                    @for (change of livePointChangesForPlayer(selectedPlayer.name); track change.id) {
+                      <span
+                        class="point-change"
+                        data-test="live-point-change"
+                        [class.down]="change.delta < 0"
+                        aria-live="polite"
+                      >{{ livePointChangeText(change.delta) }}</span>
+                    }
+                  </strong>
                 </div>
                 @if (livePlayerOwner(selectedPlayer.name); as selectedOwner) {
                   <p class="live-player-dialog-owner" data-test="live-player-dialog-owner">Drafted by {{ selectedOwner }}</p>

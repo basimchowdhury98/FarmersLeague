@@ -6,6 +6,12 @@ import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, Dra
 
 const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
 
+type LivePointChange = {
+  id: number;
+  playerName: string;
+  delta: number;
+};
+
 @Component({
   selector: 'app-root',
   imports: [],
@@ -38,6 +44,7 @@ export class App {
   protected readonly liveMatchUnavailable = signal('');
   protected readonly liveMatchLiveError = signal('');
   protected readonly selectedLivePlayer = signal<LivePlayer | null>(null);
+  protected readonly livePointChanges = signal<LivePointChange[]>([]);
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
   protected readonly draftPickFlight = signal<DraftPickFlight | null>(null);
@@ -53,9 +60,11 @@ export class App {
   private draftSocket: WebSocket | null = null;
   private liveMatchSocket: WebSocket | null = null;
   private draftPickFlightId = 0;
+  private livePointChangeId = 0;
   private activeDraftPickFlightKey = '';
   private draftPickFlightTimeout: number | null = null;
   private draftedHighlightTimeout: number | null = null;
+  private livePointChangeTimeouts = new Map<number, number>();
 
   constructor(private readonly http: HttpClient) {
     const passkey = window.location.pathname.split('/').filter(Boolean)[0];
@@ -473,12 +482,20 @@ export class App {
     return this.livePlayerPoints(this.livePlayerByName(playerName));
   }
 
+  protected livePointChangesForPlayer(playerName: string) {
+    return this.livePointChanges().filter((change) => change.playerName === playerName);
+  }
+
   protected liveSquadPoints(squad: LiveSquad) {
     return squad.players.reduce((total, player) => total + this.livePlayerPoints(player), 0);
   }
 
   protected liveStatPoints(stat: PlayerStat) {
     return liveStatPoints(stat);
+  }
+
+  protected livePointChangeText(delta: number) {
+    return `${delta > 0 ? '+' : ''}${delta} pts`;
   }
 
   protected scoringLivePlayerCategories(player: LivePlayer) {
@@ -624,6 +641,7 @@ export class App {
   private loadLiveMatch(matchId: number) {
     this.draftSocket?.close();
     this.liveMatch.set(null);
+    this.clearLivePointChanges();
     this.liveMatchUnavailable.set('');
     this.liveMatchLiveError.set('');
 
@@ -658,11 +676,53 @@ export class App {
 
   private applyLiveMatchUpdate(response: LiveMatchResponse) {
     const selectedPlayerName = this.selectedLivePlayer()?.name;
+    const currentLiveMatch = this.liveMatch();
+    if (currentLiveMatch) {
+      this.recordLivePointChanges(currentLiveMatch, response);
+    }
+
     this.liveMatch.set(response);
 
     if (selectedPlayerName) {
       this.selectedLivePlayer.set(this.livePlayerByName(selectedPlayerName));
     }
+  }
+
+  private recordLivePointChanges(currentLiveMatch: LiveMatchResponse, nextLiveMatch: LiveMatchResponse) {
+    const currentPoints = new Map(
+      currentLiveMatch.squads
+        .flatMap((squad) => squad.players)
+        .map((player) => [player.name, livePlayerPoints(player)])
+    );
+
+    const changes = nextLiveMatch.squads
+      .flatMap((squad) => squad.players)
+      .map((player) => ({ playerName: player.name, delta: livePlayerPoints(player) - (currentPoints.get(player.name) ?? livePlayerPoints(player)) }))
+      .filter((change) => change.delta !== 0)
+      .map((change) => ({ ...change, id: ++this.livePointChangeId }));
+
+    if (changes.length === 0) {
+      return;
+    }
+
+    this.livePointChanges.update((currentChanges) => [...currentChanges, ...changes]);
+
+    for (const change of changes) {
+      const timeout = window.setTimeout(() => {
+        this.livePointChanges.update((currentChanges) => currentChanges.filter((currentChange) => currentChange.id !== change.id));
+        this.livePointChangeTimeouts.delete(change.id);
+      }, 2200);
+      this.livePointChangeTimeouts.set(change.id, timeout);
+    }
+  }
+
+  private clearLivePointChanges() {
+    for (const timeout of this.livePointChangeTimeouts.values()) {
+      window.clearTimeout(timeout);
+    }
+
+    this.livePointChangeTimeouts.clear();
+    this.livePointChanges.set([]);
   }
 
   private connectDraftLiveUpdates(matchId: number) {
