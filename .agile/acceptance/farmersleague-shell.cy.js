@@ -21,4 +21,18 @@ describe('FarmersLeague shell', () => {
     cy.testGet('match-league').should('contain.text', 'FIFA World Cup');
     cy.testGet('match-card').should('have.length.greaterThan', 0);
   });
+
+  // GIVEN Alice opens the FarmersLeague home page with her valid passkey
+  // WHEN the home page loads
+  // THEN the Today tab is selected by default and the Upcoming tab is not selected
+  it('selects the Today tab by default on the home page', () => {
+    cy.visit(`/${alicePasskey}`);
+
+    cy.testGet('today-matches-tab')
+      .should('have.class', 'active-tab')
+      .and('have.attr', 'aria-current', 'page');
+    cy.testGet('upcoming-matches-tab')
+      .should('not.have.class', 'active-tab')
+      .and('not.have.attr', 'aria-current');
+  });
 });

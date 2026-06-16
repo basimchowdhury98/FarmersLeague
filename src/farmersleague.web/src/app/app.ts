@@ -5,6 +5,7 @@ import { livePlayerPoints, liveStatPoints, scoringLivePlayerCategories } from '.
 import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
 
 const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
+const defaultMatchFeedTab: MatchFeedTab = 'today';
 
 type LivePointChange = {
   id: number;
@@ -24,7 +25,7 @@ export class App {
   protected readonly matches = signal<MatchResponse[]>([]);
   protected readonly matchesLoaded = signal(false);
   protected readonly homeError = signal('');
-  protected readonly matchFeedTab = signal<MatchFeedTab>('upcoming');
+  protected readonly matchFeedTab = signal<MatchFeedTab>(defaultMatchFeedTab);
   protected readonly upcomingDateIndex = signal(0);
   protected readonly upcomingDateKeys = computed(() => this.uniqueDateKeys(this.upcomingMatches()));
   protected readonly visibleMatches = computed(() => {
@@ -118,23 +119,13 @@ export class App {
     this.http.get<MatchResponse[]>('/api/matches').subscribe((response) => {
       this.matches.set(response);
       this.matchesLoaded.set(true);
-      this.selectDefaultMatchFeedTab();
+      this.resetMatchFeedTab();
     });
   }
 
-  private selectDefaultMatchFeedTab() {
-    if (this.upcomingMatches().length > 0) {
-      this.matchFeedTab.set('upcoming');
-      this.upcomingDateIndex.set(0);
-      return;
-    }
-
-    if (this.todayMatches().length > 0) {
-      this.matchFeedTab.set('today');
-      return;
-    }
-
-    this.matchFeedTab.set('past');
+  private resetMatchFeedTab() {
+    this.matchFeedTab.set(defaultMatchFeedTab);
+    this.upcomingDateIndex.set(0);
   }
 
   protected setMatchFeedTab(tab: MatchFeedTab) {
