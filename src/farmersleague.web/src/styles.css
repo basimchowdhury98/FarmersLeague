@@ -177,14 +177,20 @@
 }
 
 .match-kickoff,
+.match-score,
 .match-draft-status {
   display: block;
   font-weight: 900;
 }
 
-.match-kickoff {
+.match-kickoff,
+.match-score {
   color: #fff;
   font-size: 0.82rem;
+}
+
+.match-score {
+  font-size: 1.05rem;
 }
 
 .match-draft-status {

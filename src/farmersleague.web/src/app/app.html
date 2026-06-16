@@ -69,7 +69,11 @@
               <span class="team-name">{{ match.homeTeam }}</span>
             </span>
             <span class="match-center">
-              <span class="match-kickoff" data-test="match-kickoff">Kickoff {{ shortKickoffText(match) }}</span>
+              @if (matchScore(match); as score) {
+                <span class="match-score" data-test="match-score">{{ score }}</span>
+              } @else {
+                <span class="match-kickoff" data-test="match-kickoff">Kickoff {{ shortKickoffText(match) }}</span>
+              }
               @if (matchDraftStatus(match)) {
                 <span class="match-draft-status" data-test="match-draft-status">{{ matchDraftStatus(match) }}</span>
               } @else {
@@ -80,7 +84,7 @@
               <span class="team-badge team-badge-away">{{ teamInitials(match.awayTeam) }}</span>
               <span class="team-name">{{ match.awayTeam }}</span>
             </span>
-            <span class="match-teams" data-test="match-teams">{{ match.homeTeam }} vs {{ match.awayTeam }}</span>
+            <span class="match-teams" data-test="match-teams">{{ matchTeamsText(match) }}</span>
             <span class="match-actions">
               @if (canCreateDraft(match)) {
                 <button type="button" data-test="create-draft-button" (click)="createDraft(match, $event)">Create draft</button>

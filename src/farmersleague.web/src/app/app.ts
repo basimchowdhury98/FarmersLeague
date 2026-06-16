@@ -321,6 +321,15 @@ export class App {
     return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(match.date));
   }
 
+  protected matchScore(match: MatchResponse) {
+    return match.score?.trim() || null;
+  }
+
+  protected matchTeamsText(match: MatchResponse) {
+    const score = this.matchScore(match);
+    return score ? `${match.homeTeam} ${score} ${match.awayTeam}` : `${match.homeTeam} vs ${match.awayTeam}`;
+  }
+
   protected homeGreeting() {
     return this.userName() ? `Welcome back, ${this.userName()}` : 'World Cup draft room';
   }

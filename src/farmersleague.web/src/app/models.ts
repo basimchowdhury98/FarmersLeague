@@ -12,6 +12,7 @@ export type MatchResponse = {
   draft?: DraftResponse | null;
   hasStarted?: boolean;
   hasFinished?: boolean;
+  score?: string | null;
 };
 
 export type LineupResponse = {

@@ -436,7 +436,7 @@ app.MapPost("/api/testing/world-cup-2026/games/reset", async (WorldCupGamesCache
 
 app.MapPut("/api/testing/world-cup-2026/games/{gameId}/status", async (string gameId, TestingGameStatusRequest request, WorldCupGamesCache gamesCache, CancellationToken cancellationToken) =>
 {
-    if (!FotMobWorldCupScraper.SetMockGameStatus(gameId, request.Started, request.Finished))
+    if (!FotMobWorldCupScraper.SetMockGameStatus(gameId, request.Started, request.Finished, request.Score))
     {
         return Results.NotFound(new { title = "Mock game not found" });
     }
@@ -823,7 +823,8 @@ static MatchResponse? ToScraperMatchResponse(WorldCupGameResponse game)
         game.StartTimeUtc,
         [],
         game.Status.Started,
-        game.Status.Finished);
+        game.Status.Finished,
+        game.Status.Score);
 }
 
 static LineupResponse ToScraperLineupResponse(WorldCupLineupTeamResponse lineup) => new(
@@ -901,7 +902,8 @@ static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? dr
     match.Lineups,
     draft is null ? null : ToDraftResponse(match, draft),
     match.HasStarted,
-    match.HasFinished);
+    match.HasFinished,
+    match.Score);
 
 static PlayerStatsResponse ToPlayerStatsResponse(WorldCupPlayerStatsResponse stats) => new(
     stats.GameId,

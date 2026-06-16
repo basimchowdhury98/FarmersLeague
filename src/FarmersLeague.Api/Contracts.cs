@@ -27,7 +27,7 @@ record DraftAccessRequest(string Passkey);
 
 record DraftStartRequest(string Passkey, string? DraftOrderMode);
 
-record TestingGameStatusRequest(bool Started, bool Finished);
+record TestingGameStatusRequest(bool Started, bool Finished, string? Score = null);
 
 record DraftPickErrorResponse(string Message);
 
@@ -43,9 +43,9 @@ record LiveMatchResult(LiveMatchResponse? LiveMatch, IResult? Error);
 
 record DraftResponse(MatchResponse Match, string Status, IReadOnlyList<string> JoinedUsers, IReadOnlyList<string> DraftOrder, IReadOnlyList<string> DraftTurnOrder, IReadOnlyList<DraftPick> Picks, string? CurrentTurn, bool IsComplete);
 
-record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups, bool HasStarted, bool HasFinished);
+record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups, bool HasStarted, bool HasFinished, string? Score = null);
 
-record HomeMatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups, DraftResponse? Draft, bool HasStarted, bool HasFinished);
+record HomeMatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups, DraftResponse? Draft, bool HasStarted, bool HasFinished, string? Score = null);
 
 record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterResponse> Starters, IReadOnlyList<StarterResponse> Bench);
 

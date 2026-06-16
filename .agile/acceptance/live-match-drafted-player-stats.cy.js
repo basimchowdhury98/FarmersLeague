@@ -7,7 +7,6 @@ describe('Live match drafted player stats', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
   const fullBenchPlayerCount = 15;
-  const scraperBaseUrl = '';
 
   let match;
   let matchLabel;
@@ -72,16 +71,8 @@ describe('Live match drafted player stats', () => {
     });
   };
 
-  const resetScraperMatches = () => {
-    cy.request('POST', `${scraperBaseUrl}/api/testing/world-cup-2026/games/reset`)
-      .its('status')
-      .should('equal', 204);
-  };
-
   const setScraperMatchStatus = (status) => {
-    cy.request('PUT', `${scraperBaseUrl}/api/testing/world-cup-2026/games/${match.id}/status`, status)
-      .its('status')
-      .should('equal', 204);
+    cy.setScraperMatchStatus(match.id, status);
   };
 
   const clearCompletedLiveMatch = () => {
@@ -93,14 +84,14 @@ describe('Live match drafted player stats', () => {
   const cachedCompletedLiveMatch = () => cy.request(`/api/testing/live-matches/${match.id}/completed`);
 
   beforeEach(() => {
-    resetScraperMatches();
+    cy.resetScraperMatches();
     loadDraftableMatch();
     cy.then(() => cy.request('DELETE', `/api/testing/drafts/${match.id}`).its('status').should('equal', 204));
     cy.then(() => clearCompletedLiveMatch());
   });
 
   afterEach(() => {
-    resetScraperMatches();
+    cy.resetScraperMatches();
   });
 
   // GIVEN a drafted player has scraper stats but none of those stats contribute points

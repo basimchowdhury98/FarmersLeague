@@ -8,7 +8,6 @@ describe('Draft match start cutoff', () => {
   const draftableMatchId = 1001;
   const noLineupMatchId = 1002;
   const fullBenchPlayerCount = 15;
-  const scraperBaseUrl = '';
 
   let match;
   let noLineupMatch;
@@ -16,18 +15,6 @@ describe('Draft match start cutoff', () => {
   let noLineupMatchLabel;
   let homeStarters;
   let awayStarters;
-
-  const resetScraperMatches = () => {
-    cy.request('POST', `${scraperBaseUrl}/api/testing/world-cup-2026/games/reset`)
-      .its('status')
-      .should('equal', 204);
-  };
-
-  const setScraperMatchStatus = (matchId, status) => {
-    cy.request('PUT', `${scraperBaseUrl}/api/testing/world-cup-2026/games/${matchId}/status`, status)
-      .its('status')
-      .should('equal', 204);
-  };
 
   const loadMatches = () => {
     cy.request('/api/matches').then(({ body }) => {
@@ -79,7 +66,7 @@ describe('Draft match start cutoff', () => {
   const clickDraft = (playerName) => cy.contains('[data-test="draft-player"]', playerName).within(() => cy.contains('button', 'Draft').click());
 
   beforeEach(() => {
-    resetScraperMatches();
+    cy.resetScraperMatches();
     cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
     cy.request('DELETE', `/api/testing/drafts/${noLineupMatchId}`).its('status').should('equal', 204);
     loadMatches();
@@ -88,7 +75,7 @@ describe('Draft match start cutoff', () => {
   });
 
   afterEach(() => {
-    resetScraperMatches();
+    cy.resetScraperMatches();
     cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
     cy.request('DELETE', `/api/testing/drafts/${noLineupMatchId}`).its('status').should('equal', 204);
   });
@@ -139,7 +126,7 @@ describe('Draft match start cutoff', () => {
   // WHEN an admin views the home page
   // THEN the match does not show a Create draft action and indicates that the match is ongoing
   it('hides draft creation and marks a started match as ongoing on the home page', () => {
-    setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
+    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
     loadMatches();
 
     cy.visit(`/${alicePasskey}`);
@@ -154,7 +141,7 @@ describe('Draft match start cutoff', () => {
   // WHEN an admin views the home page
   // THEN the match does not show a Create draft action and indicates that the match has ended
   it('hides draft creation and marks a finished match as ended on the home page', () => {
-    setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
+    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
     loadMatches();
 
     cy.visit(`/${alicePasskey}`);
@@ -187,7 +174,7 @@ describe('Draft match start cutoff', () => {
   // THEN the draft is not started and an error says “Draft can’t be started since match has started.”
   it('rejects starting an open draft after the scraper says the match has started', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
-    setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
+    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
 
     cy.request({
       method: 'POST',
@@ -210,7 +197,7 @@ describe('Draft match start cutoff', () => {
       draftOrder: ['Alice', 'Bob'],
       picks: completedPicks().slice(0, 5)
     });
-    setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
+    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
 
     cy.visit(draftPath(bobPasskey));
     clickDraft(awayStarters[2]);
@@ -228,7 +215,7 @@ describe('Draft match start cutoff', () => {
   // WHEN an admin attempts to create a draft for that match through the API
   // THEN the API rejects the request and no draft is created
   it('rejects creating a draft through the API after the match has started or finished', () => {
-    setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
+    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
 
     cy.request({
       method: 'POST',

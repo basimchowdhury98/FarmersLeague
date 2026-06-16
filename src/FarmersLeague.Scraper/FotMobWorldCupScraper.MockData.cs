@@ -9,14 +9,14 @@ public partial class FotMobWorldCupScraper
 
     public static void ResetMockGameStatus() => MockGameStatusOverrides.Clear();
 
-    public static bool SetMockGameStatus(string gameId, bool started, bool finished)
+    public static bool SetMockGameStatus(string gameId, bool started, bool finished, string? score = null)
     {
         if (!MockGames().Any(game => string.Equals(game.Id, gameId, StringComparison.Ordinal)))
         {
             return false;
         }
 
-        MockGameStatusOverrides[gameId] = new WorldCupGameStatusResponse(started, finished, null, "Mock mode override", null);
+        MockGameStatusOverrides[gameId] = new WorldCupGameStatusResponse(started, finished, score, "Mock mode override", null);
 
         return true;
     }
