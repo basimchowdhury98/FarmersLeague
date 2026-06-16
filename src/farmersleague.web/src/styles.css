@@ -69,6 +69,7 @@ app-root {
   font-size: clamp(2.05rem, 9vw, 3.35rem);
   letter-spacing: -0.08em;
   overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .scoreboard-user-pill {
@@ -111,6 +112,20 @@ app-root {
 
 .scoreboard-tabs button {
   min-width: 0;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 8%);
+  color: rgb(247 241 223 / 76%);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+}
+
+.scoreboard-tabs button.active-tab {
+  border-color: #b8e986;
+  background: #b8e986;
+  color: #07140f;
 }
 
 .scoreboard-tabs strong {
@@ -413,12 +428,91 @@ main.shell .draft-error {
 }
 
 @media (min-width: 720px) {
+  .scoreboard {
+    width: min(100%, 68rem);
+    padding: 1.25rem;
+  }
+
+  .scoreboard h1 {
+    font-size: clamp(3.2rem, 7vw, 5.4rem);
+  }
+
+  .scoreboard-greeting {
+    font-size: 1rem;
+  }
+
+  .scoreboard-tabs {
+    max-width: 34rem;
+    font-size: 0.95rem;
+  }
+
+  .scoreboard-section-title {
+    margin-top: 1.4rem;
+    font-size: 0.82rem;
+  }
+
+  .match {
+    grid-template-columns: minmax(8rem, 1fr) minmax(15rem, 1.35fr) minmax(8rem, 1fr);
+    min-height: 6.6rem;
+    padding: 0.9rem 1rem 1rem;
+    border-radius: 1rem;
+  }
+
+  .league {
+    font-size: 0.72rem;
+  }
+
+  .team-badge {
+    width: 2.8rem;
+    height: 2.8rem;
+    font-size: 1rem;
+  }
+
+  .team-name {
+    font-size: 0.86rem;
+  }
+
+  .match-kickoff,
+  .match-score {
+    font-size: 1.05rem;
+  }
+
+  .match-draft-status,
+  .match-teams {
+    font-size: 0.82rem;
+  }
+
+  .match-actions button {
+    padding: 0.55rem 0.9rem;
+    font-size: 0.86rem;
+  }
+
   main.shell .draft-top,
   main.shell .turn-card,
   main.shell .concept,
   main.shell .draft-summary {
     width: min(100%, 58rem);
     max-width: 58rem;
+  }
+}
+
+@media (min-width: 1020px) {
+  .scoreboard {
+    width: min(100%, 74rem);
+    padding: 1.5rem;
+  }
+
+  .scoreboard-topbar {
+    align-items: center;
+  }
+
+  .scoreboard-tabs {
+    margin-top: 1.35rem;
+  }
+
+  .match {
+    grid-template-columns: minmax(10rem, 1fr) minmax(20rem, 1.45fr) minmax(10rem, 1fr);
+    gap: 1rem;
   }
 }
 
@@ -451,7 +545,9 @@ main.shell .draft-error {
   }
 
   .scoreboard h1 {
-    font-size: clamp(2rem, 12vw, 2.85rem);
+    font-size: clamp(1.85rem, 9.6vw, 2.45rem);
+    line-height: 0.96;
+    letter-spacing: -0.07em;
   }
 
   .scoreboard-user-pill {
