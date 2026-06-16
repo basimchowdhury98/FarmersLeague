@@ -8,6 +8,7 @@ services:
     environment:
       - Redis__ConnectionString=redis:6379
       - WorldCupScraper__BaseUrl=http://scraper:8080
+      - SeedTestUsers=${USE_SCRAPER_MOCK_MODE:-false}
     depends_on:
       - redis
       - scraper

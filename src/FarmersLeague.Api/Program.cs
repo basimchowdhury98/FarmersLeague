@@ -19,6 +19,11 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddHttpClient("WorldCupScraper", client =>
 {
     var baseUrl = builder.Configuration["WorldCupScraper:BaseUrl"] ?? "http://localhost:5082";
+    if (!baseUrl.Contains("://", StringComparison.Ordinal))
+    {
+        baseUrl = $"http://{baseUrl}";
+    }
+
     client.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : $"{baseUrl}/");
     client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
 });
@@ -457,8 +462,10 @@ static async Task SeedLocalUsers(IServiceProvider services)
 {
     using var scope = services.CreateScope();
     var cache = scope.ServiceProvider.GetRequiredService<IDistributedCache>();
+    var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+    var includeTestUsers = bool.TryParse(configuration["SeedTestUsers"], out var seedTestUsers) && seedTestUsers;
 
-    foreach (var user in SeededUsers())
+    foreach (var user in SeededUsers(includeTestUsers))
     {
         await cache.SetStringAsync(UserPasskeyCacheKey(user.Passkey), JsonSerializer.Serialize(user, AppJson.Options));
     }
@@ -972,9 +979,23 @@ static int NumericStatValue(object? value)
     };
 }
 
-static LeagueUser[] SeededUsers() =>
-[
-    new("Alice", "alice-1111-1111-1111", true),
-    new("Bob", "bob-2222-2222-2222", false),
-    new("Carol", "carol-3333-3333-3333", false)
-];
+static LeagueUser[] SeededUsers(bool includeTestUsers)
+{
+    var users = new List<LeagueUser>
+    {
+        new("Basim", "basim-e537-dc50-3bb8", true),
+        new("Avi", "avi-79fa-1d3a-3460", false),
+        new("Suyash", "suyash-1efa-61d5-4fb3", false)
+    };
+
+    if (includeTestUsers)
+    {
+        users.AddRange([
+            new("Alice", "alice-1111-1111-1111", true),
+            new("Bob", "bob-2222-2222-2222", false),
+            new("Carol", "carol-3333-3333-3333", false)
+        ]);
+    }
+
+    return users.ToArray();
+}
