@@ -6,6 +6,6 @@
 **/node_modules
 **/dist
 **/.angular
-tests/e2e/node_modules
-tests/e2e/videos
-tests/e2e/screenshots
+.agile/acceptance/node_modules
+.agile/acceptance/videos
+.agile/acceptance/screenshots

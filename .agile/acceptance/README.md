@@ -7,4 +7,4 @@ Conventions:
 - Place Given / When / Then comments immediately above each `it` block.
 - Use `data-test` attributes for UI assertions and select them with `cy.testGet('selector-name')`.
 
-The current project Cypress configuration lives in `tests/e2e/cypress.config.js`.
+The Cypress project configuration lives in this directory.
