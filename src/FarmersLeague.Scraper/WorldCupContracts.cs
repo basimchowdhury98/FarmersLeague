@@ -1,8 +1,17 @@
+public interface IWorldCupScraper
+{
+    Task<IReadOnlyList<WorldCupGameResponse>> GetGames(CancellationToken cancellationToken);
+
+    Task<WorldCupLineupResponse?> GetLineup(string gameId, CancellationToken cancellationToken);
+
+    Task<WorldCupPlayerStatsResponse?> GetPlayerStats(string gameId, IReadOnlyList<string> requestedPlayers, CancellationToken cancellationToken);
+}
+
 record FotMobFixtureMatch(WorldCupGameResponse Game, string PageUrl);
 
 record PlayerStatCategoryDefinition(string Key, string Title, IReadOnlyList<string> StatKeys);
 
-record WorldCupGameResponse(
+public record WorldCupGameResponse(
     string Id,
     WorldCupTeamResponse HomeTeam,
     WorldCupTeamResponse AwayTeam,
@@ -12,25 +21,25 @@ record WorldCupGameResponse(
     DateTimeOffset StartTimeUtc,
     WorldCupGameStatusResponse Status);
 
-record WorldCupTeamResponse(string Id, string Name, string? ShortName);
+public record WorldCupTeamResponse(string Id, string Name, string? ShortName);
 
-record WorldCupGameStatusResponse(bool Started, bool Finished, string? Score, string? Reason, string? LiveTime);
+public record WorldCupGameStatusResponse(bool Started, bool Finished, string? Score, string? Reason, string? LiveTime);
 
-record WorldCupLineupResponse(
+public record WorldCupLineupResponse(
     string GameId,
     string? LineupType,
     string? Source,
     WorldCupLineupTeamResponse HomeTeam,
     WorldCupLineupTeamResponse AwayTeam);
 
-record WorldCupLineupTeamResponse(
+public record WorldCupLineupTeamResponse(
     string Id,
     string Name,
     string? Formation,
     IReadOnlyList<WorldCupLineupPlayerResponse> Starting11,
     IReadOnlyList<WorldCupLineupPlayerResponse> Bench);
 
-record WorldCupLineupPlayerResponse(
+public record WorldCupLineupPlayerResponse(
     string Id,
     string Name,
     string? FirstName,
@@ -41,18 +50,18 @@ record WorldCupLineupPlayerResponse(
     bool IsCaptain,
     WorldCupFormationPositionResponse? FormationPosition);
 
-record WorldCupFormationPositionResponse(WorldCupLayoutResponse? Horizontal, WorldCupLayoutResponse? Vertical);
+public record WorldCupFormationPositionResponse(WorldCupLayoutResponse? Horizontal, WorldCupLayoutResponse? Vertical);
 
-record WorldCupLayoutResponse(decimal X, decimal Y, decimal Height, decimal Width);
+public record WorldCupLayoutResponse(decimal X, decimal Y, decimal Height, decimal Width);
 
-record WorldCupPlayerStatsRequest(IReadOnlyList<string> Players);
+public record WorldCupPlayerStatsRequest(IReadOnlyList<string> Players);
 
-record WorldCupPlayerStatsResponse(
+public record WorldCupPlayerStatsResponse(
     string GameId,
     IReadOnlyList<WorldCupPlayerStatsPlayerResponse> Players,
     IReadOnlyList<string> MissingPlayers);
 
-record WorldCupPlayerStatsPlayerResponse(
+public record WorldCupPlayerStatsPlayerResponse(
     string Id,
     string? OptaId,
     string Name,
@@ -62,12 +71,12 @@ record WorldCupPlayerStatsPlayerResponse(
     bool IsGoalkeeper,
     IReadOnlyList<WorldCupPlayerStatCategoryResponse> Categories);
 
-record WorldCupPlayerStatCategoryResponse(
+public record WorldCupPlayerStatCategoryResponse(
     string Key,
     string Title,
     IReadOnlyList<WorldCupPlayerStatResponse> Stats);
 
-record WorldCupPlayerStatResponse(
+public record WorldCupPlayerStatResponse(
     string Key,
     string Label,
     string? SourceGroup,
@@ -75,4 +84,4 @@ record WorldCupPlayerStatResponse(
     object? Total,
     string? Type);
 
-class FotMobScrapeException(string message) : Exception(message);
+public class FotMobScrapeException(string message) : Exception(message);

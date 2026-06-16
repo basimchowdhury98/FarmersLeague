@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-partial class FotMobWorldCupScraper
+public partial class FotMobWorldCupScraper
 {
     private const string MockGameId = "1001";
     private const string MockNoLineupGameId = "1002";

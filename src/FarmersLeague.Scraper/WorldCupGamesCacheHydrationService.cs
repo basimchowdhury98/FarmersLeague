@@ -1,4 +1,8 @@
-class WorldCupGamesCacheHydrationService(
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+
+public class WorldCupGamesCacheHydrationService(
     WorldCupGamesCache gamesCache,
     IConfiguration configuration,
     ILogger<WorldCupGamesCacheHydrationService> logger) : BackgroundService

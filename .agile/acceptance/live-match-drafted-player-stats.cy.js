@@ -7,7 +7,7 @@ describe('Live match drafted player stats', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
   const fullBenchPlayerCount = 15;
-  const scraperBaseUrl = 'http://localhost:5082';
+  const scraperBaseUrl = '';
 
   let match;
   let matchLabel;

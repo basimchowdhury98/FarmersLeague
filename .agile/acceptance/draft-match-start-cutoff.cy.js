@@ -8,7 +8,7 @@ describe('Draft match start cutoff', () => {
   const draftableMatchId = 1001;
   const noLineupMatchId = 1002;
   const fullBenchPlayerCount = 15;
-  const scraperBaseUrl = 'http://localhost:5082';
+  const scraperBaseUrl = '';
 
   let match;
   let noLineupMatch;

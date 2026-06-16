@@ -1,10 +1,10 @@
 describe('FarmersLeague shell', () => {
   const alicePasskey = 'alice-1111-1111-1111';
 
-  // GIVEN the app and scraper API are running
+  // GIVEN the app is running with scraper services
   // WHEN Alice opens the FarmersLeague shell using her valid passkey URL
-  // THEN the UI shows data loaded through the API and scraper API
-  it('loads UI data through the API and scraper API', () => {
+  // THEN the UI shows data loaded through the API and scraper services
+  it('loads UI data through the API and scraper services', () => {
     cy.intercept('GET', '/api/hello').as('helloApi');
     cy.intercept('GET', '/api/matches').as('matchesApi');
 

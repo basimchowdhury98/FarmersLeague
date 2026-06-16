@@ -11,4 +11,8 @@
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\FarmersLeague.Scraper\FarmersLeague.Scraper.csproj" />
+  </ItemGroup>
+
 </Project>

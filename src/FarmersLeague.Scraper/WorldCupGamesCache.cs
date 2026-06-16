@@ -1,4 +1,6 @@
-class WorldCupGamesCache(FotMobWorldCupScraper scraper, ILogger<WorldCupGamesCache> logger)
+using Microsoft.Extensions.Logging;
+
+public class WorldCupGamesCache(IWorldCupScraper scraper, ILogger<WorldCupGamesCache> logger)
 {
     private static readonly TimeSpan MaxCacheAge = TimeSpan.FromHours(24);
     private readonly SemaphoreSlim hydrationLock = new(1, 1);

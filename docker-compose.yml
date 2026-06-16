@@ -7,21 +7,11 @@ services:
       - "8080:8080"
     environment:
       - Redis__ConnectionString=redis:6379
-      - WorldCupScraper__BaseUrl=http://scraper:8080
+      - FotMob__MockMode=${USE_SCRAPER_MOCK_MODE:-false}
+      - FotMob__UseFixtureData=${USE_SCRAPER_FIXTURE_DATA:-false}
       - SeedTestUsers=${USE_SCRAPER_MOCK_MODE:-false}
     depends_on:
       - redis
-      - scraper
-
-  scraper:
-    build:
-      context: .
-      target: scraper-runtime
-    ports:
-      - "5082:8080"
-    environment:
-      - FotMob__MockMode=${USE_SCRAPER_MOCK_MODE:-false}
-      - FotMob__UseFixtureData=${USE_SCRAPER_FIXTURE_DATA:-false}
 
   redis:
     image: redis:7-alpine
