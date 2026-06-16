@@ -33,11 +33,13 @@ make val
 
 ## Render
 
-This repo includes a `render.yaml` blueprint for production deployment:
+Use Render's free tier with two manually created Docker web services:
 
-- `farmersleague-app`: public Docker web service serving the Angular app and API
-- `farmersleague-scraper`: private Docker service for FotMob scraping
+- `farmersleague-app`: public web service serving the Angular app and API
+- `farmersleague-scraper`: public web service for FotMob scraping
 - Upstash Redis: external Redis store for users, drafts, and completed match state
+
+Blueprints and Render private services are not required for the free setup.
 
 ### Upstash Redis
 
@@ -49,15 +51,46 @@ Create an Upstash Redis database, then copy the TCP connection details from the 
 
 Do not use `UPSTASH_REDIS_REST_URL` or `UPSTASH_REDIS_REST_TOKEN`; this app uses a TCP Redis client through `Microsoft.Extensions.Caching.StackExchangeRedis`.
 
-### Render Blueprint
+### Render Free-Tier Services
 
 1. Push this repo to GitHub.
-2. In Render, create a new Blueprint from the repo.
-3. When Render prompts for `Redis__ConnectionString`, paste the Upstash TCP connection string.
-4. Create the Blueprint.
+2. Create `farmersleague-scraper` first:
+   - Service type: Web Service
+   - Runtime: Docker
+   - Plan: Free
+   - Dockerfile path: `./Dockerfile.scraper`
+   - Docker context: `.`
+   - Health check path: `/health`
+   - Environment variables:
+
+```text
+ASPNETCORE_ENVIRONMENT=Production
+PORT=8080
+FotMob__MockMode=false
+FotMob__UseFixtureData=false
+```
+
+3. Wait for the scraper to deploy, then copy its public URL, for example `https://farmersleague-scraper.onrender.com`.
+4. Create `farmersleague-app`:
+   - Service type: Web Service
+   - Runtime: Docker
+   - Plan: Free
+   - Dockerfile path: `./Dockerfile`
+   - Docker context: `.`
+   - Health check path: `/api/hello`
+   - Environment variables:
+
+```text
+ASPNETCORE_ENVIRONMENT=Production
+PORT=8080
+SeedTestUsers=false
+WorldCupScraper__BaseUrl=https://farmersleague-scraper.onrender.com
+Redis__ConnectionString=<UPSTASH_ENDPOINT>:<UPSTASH_PORT>,password=<UPSTASH_PASSWORD>,ssl=True,abortConnect=False
+```
+
 5. After deploy, open the `farmersleague-app` URL and verify `/api/hello` returns a JSON response.
 
-The app service gets the scraper private `host:port` from Render and adds `http://` at runtime if needed.
+Free Render services can spin down after inactivity, so the first request can be slow while the app or scraper wakes up.
 
 ### Production Passkeys
 
