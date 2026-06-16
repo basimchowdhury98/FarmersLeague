@@ -1,6 +1,8 @@
 .shell {
+  min-width: 0;
   min-height: 100vh;
   padding: 2rem 1rem 4rem;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at 100% 0, rgb(80 18 106 / 54%), transparent 24rem),
     radial-gradient(circle at 0 0, rgb(12 111 38 / 74%), transparent 20rem),
@@ -36,6 +38,7 @@ h1 {
   font-size: clamp(2.5rem, 12vw, 5.8rem);
   line-height: 0.9;
   letter-spacing: -0.08em;
+  overflow-wrap: anywhere;
 }
 
 h2,
@@ -158,6 +161,10 @@ h3 {
   background: rgb(13 34 25 / 92%);
 }
 
+.turn-card > * {
+  min-width: 0;
+}
+
 .turn-card > div,
 .draft-turn-queue-wrap {
   display: grid;
@@ -263,6 +270,7 @@ h3 {
   display: grid;
   gap: 0.85rem;
   width: min(100%, 32rem);
+  min-width: 0;
   padding: 1.25rem;
   border: 1px solid rgb(184 233 134 / 32%);
   border-radius: 1.25rem;
@@ -379,6 +387,8 @@ h3 {
   align-content: stretch;
   gap: 1rem;
   min-height: 760px;
+  width: 100%;
+  min-width: 0;
   padding: 1rem;
   overflow: hidden;
   border-radius: 1.25rem;
@@ -426,6 +436,7 @@ h3 {
 
 .formation-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: clamp(0.35rem, 2vw, 0.9rem);
@@ -443,6 +454,7 @@ h3 {
 
 .player-slot {
   flex: 1 1 0;
+  min-width: 0;
   max-width: 8.5rem;
 }
 
@@ -607,6 +619,13 @@ h3 {
   gap: 1rem;
 }
 
+.live-tracker-heading > :first-child,
+.live-player-dialog-heading > :first-child,
+.live-tracker-players span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .live-tracker-heading h2,
 .live-player-dialog-heading h2 {
   margin: 0;
@@ -748,6 +767,7 @@ h3 {
   display: grid;
   gap: 1rem;
   width: min(100%, 42rem);
+  min-width: 0;
   max-height: min(88vh, 48rem);
   overflow: auto;
   padding: 1.25rem;
@@ -790,6 +810,7 @@ h3 {
   }
 
 }
+
 
 @media (min-width: 1020px) {
   .draft-summary {

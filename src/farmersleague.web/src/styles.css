@@ -1,3 +1,28 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  background: #000;
+}
+
+body {
+  min-width: 0;
+}
+
+app-root {
+  display: block;
+  min-width: 0;
+  min-height: 100vh;
+}
+
 .points-value{position:relative;overflow:visible}
 .point-change{position:absolute;right:0;bottom:100%;padding:.2rem .45rem;border-radius:999px;background:#b8e986;color:#07140f;font-size:.74rem;font-weight:950;white-space:nowrap;pointer-events:none;animation:point-change 2.2s ease-out forwards}
 .point-change.down{background:#ff6b63;color:#fff7f5}
@@ -6,8 +31,8 @@
 @media (prefers-reduced-motion: reduce) {.point-change{animation-duration:1ms}}
 
 .scoreboard {
+  width: min(100%, 34rem);
   min-height: calc(100vh - 4rem);
-  max-width: 34rem;
   padding: 1rem;
   border: 1px solid rgb(255 255 255 / 8%);
   border-radius: 1.7rem;
@@ -20,6 +45,11 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
+  min-width: 0;
+}
+
+.scoreboard-topbar > div:first-child {
+  min-width: 0;
 }
 
 .scoreboard-clock,
@@ -38,10 +68,12 @@
 .scoreboard h1 {
   font-size: clamp(2.05rem, 9vw, 3.35rem);
   letter-spacing: -0.08em;
+  overflow-wrap: anywhere;
 }
 
 .scoreboard-user-pill {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
   gap: 0.35rem;
   max-width: 10.5rem;
@@ -77,6 +109,10 @@
   text-align: center;
 }
 
+.scoreboard-tabs button {
+  min-width: 0;
+}
+
 .scoreboard-tabs strong {
   color: #fff;
 }
@@ -95,10 +131,11 @@
 
 .match {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(6.5rem, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(7.75rem, 1.35fr) minmax(0, 1fr);
   align-items: center;
   gap: 0.65rem;
   width: 100%;
+  min-width: 0;
   min-height: 5.1rem;
   padding: 0.65rem 0.75rem 0.7rem;
   border: 0;
@@ -130,6 +167,14 @@
   display: grid;
   justify-items: center;
   gap: 0.25rem;
+  min-width: 0;
+}
+
+.league,
+.team-side,
+.match-center,
+.match-teams,
+.match-actions {
   min-width: 0;
 }
 
@@ -212,6 +257,7 @@
 }
 
 .match-actions button {
+  max-width: 100%;
   padding: 0.48rem 0.75rem;
   border: 0;
   border-radius: 999px;
@@ -246,6 +292,7 @@ main.shell .draft-top,
 main.shell .turn-card,
 main.shell .concept,
 main.shell .draft-summary {
+  width: min(100%, 34rem);
   max-width: 34rem;
 }
 
@@ -370,6 +417,170 @@ main.shell .draft-error {
   main.shell .turn-card,
   main.shell .concept,
   main.shell .draft-summary {
+    width: min(100%, 58rem);
     max-width: 58rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell {
+    padding: 0.75rem 0.6rem 2.5rem;
+  }
+
+  main.shell .hero,
+  main.shell .draft-top,
+  main.shell .turn-card,
+  main.shell .concept,
+  main.shell .draft-summary,
+  .live-match {
+    width: 100%;
+  }
+
+  main.shell .draft-title-block h1 {
+    font-size: clamp(2rem, 11vw, 3rem);
+  }
+
+  .scoreboard {
+    min-height: calc(100vh - 1.5rem);
+    padding: 0.75rem;
+    border-radius: 1.35rem;
+  }
+
+  .scoreboard-topbar {
+    gap: 0.65rem;
+  }
+
+  .scoreboard h1 {
+    font-size: clamp(2rem, 12vw, 2.85rem);
+  }
+
+  .scoreboard-user-pill {
+    max-width: 3.1rem;
+    padding-inline: 0.72rem;
+  }
+
+  .scoreboard-user-pill span:last-child {
+    display: none;
+  }
+
+  .scoreboard-tabs {
+    gap: 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  .scoreboard-tabs button {
+    padding-inline: 0.45rem;
+  }
+
+  .scoreboard-section-title {
+    gap: 0.6rem;
+    font-size: 0.66rem;
+  }
+
+  .match {
+    grid-template-columns: minmax(3.6rem, 0.8fr) minmax(7rem, 1.4fr) minmax(3.6rem, 0.8fr);
+    gap: 0.45rem;
+    padding: 0.62rem;
+    border-radius: 0.78rem;
+  }
+
+  .team-badge {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .team-name,
+  .match-draft-status,
+  .match-teams {
+    font-size: 0.66rem;
+  }
+
+  .match-kickoff,
+  .match-score {
+    font-size: 0.76rem;
+  }
+
+  .match-actions button {
+    padding: 0.45rem 0.72rem;
+  }
+
+  .turn-card,
+  .draft-order-slot,
+  .live-tracker {
+    grid-template-columns: 1fr;
+  }
+
+  .turn-card {
+    gap: 0.6rem;
+    padding: 0.75rem;
+  }
+
+  .upcoming-date-pager {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .upcoming-date-pager button,
+  .upcoming-date-pager span {
+    width: 100%;
+    text-align: center;
+  }
+
+  .mega-pitch {
+    min-height: 620px;
+    padding: 0.65rem;
+    border-radius: 1rem;
+  }
+
+  .mega-pitch::before {
+    inset: 0.65rem;
+  }
+
+  .split-team {
+    padding: 0.35rem;
+  }
+
+  .fallback-starters {
+    grid-template-columns: 1fr;
+  }
+
+  .player-slot {
+    flex-basis: min(30%, 6.4rem);
+    max-width: 6.4rem;
+  }
+
+  .player-slot button {
+    min-height: 3.15rem;
+    padding: 0.42rem;
+    border-radius: 0.8rem;
+    font-size: 0.68rem;
+  }
+
+  .player-slot small {
+    font-size: 0.58rem;
+  }
+
+  .live-tracker-heading,
+  .live-player-dialog-heading {
+    gap: 0.65rem;
+  }
+
+  .live-tracker-heading strong,
+  .live-player-dialog-heading strong {
+    padding: 0.38rem 0.58rem;
+    font-size: 0.86rem;
+  }
+
+  .live-player-dialog,
+  .draft-order-mode-dialog,
+  .draft-order-reveal {
+    padding: 0.6rem;
+  }
+
+  .live-player-dialog-panel,
+  .draft-order-mode-panel {
+    padding: 1rem;
+    border-radius: 1rem;
   }
 }
