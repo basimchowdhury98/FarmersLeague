@@ -115,6 +115,16 @@
             }
           </div>
 
+          @if (liveState.finalResult) {
+            <section class="live-match-result" data-test="live-match-result" aria-label="Final match result">
+              <p class="eyebrow">Final result</p>
+              <h2 data-test="live-match-winner">{{ liveMatchWinnerText() }}</h2>
+              @if (liveState.finalResult.winners.length > 1) {
+                <p data-test="live-match-tie-winners">{{ liveState.finalResult.winners.join(', ') }}</p>
+              }
+            </section>
+          }
+
           <section class="live-tracker" data-test="live-tracker" aria-label="Live player points tracker">
             @for (squad of liveSquads(); track squad.userName) {
               <article
@@ -125,7 +135,7 @@
               >
                 <div class="live-tracker-heading" [attr.data-test]="isCurrentUserSquad(squad) ? 'current-user-live-squad' : null">
                   <h2>{{ squad.userName }}{{ isCurrentUserSquad(squad) ? ' · You' : '' }}</h2>
-                  <strong data-test="live-squad-points">{{ liveSquadPoints(squad) }} pts</strong>
+                  <strong [attr.data-test]="isLiveMatchFinal() ? 'live-squad-final-points' : 'live-squad-points'">{{ liveSquadFinalPoints(squad) }} pts</strong>
                 </div>
                 <ol class="live-tracker-players">
                   @for (player of squad.players; track player.name) {

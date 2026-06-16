@@ -61,6 +61,18 @@ export type DraftPickErrorResponse = {
 export type LiveMatchResponse = {
   match: MatchResponse;
   squads: LiveSquad[];
+  finalResult: LiveMatchFinalResult | null;
+};
+
+export type LiveMatchFinalResult = {
+  winners: string[];
+  squads: LiveSquadFinalScore[];
+  finalizedAt: string;
+};
+
+export type LiveSquadFinalScore = {
+  userName: string;
+  totalPoints: number;
 };
 
 export type LiveSquad = {

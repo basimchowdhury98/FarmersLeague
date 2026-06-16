@@ -421,6 +421,27 @@ app.MapDelete("/api/testing/drafts/{matchId:int}", async (int matchId, IDistribu
     return Results.NoContent();
 });
 
+app.MapGet("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
+{
+    var completed = await GetCompletedLiveMatch(matchId, cache, cancellationToken);
+
+    return completed is null ? Results.NotFound() : Results.Ok(completed);
+});
+
+app.MapPut("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, CompletedLiveMatchResult completed, IDistributedCache cache, CancellationToken cancellationToken) =>
+{
+    await SaveCompletedLiveMatch(matchId, completed, cache, cancellationToken);
+
+    return Results.NoContent();
+});
+
+app.MapDelete("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
+{
+    await cache.RemoveAsync(CompletedLiveMatchCacheKey(matchId), cancellationToken);
+
+    return Results.NoContent();
+});
+
 app.MapPut("/api/testing/drafts/{matchId:int}", async (int matchId, DraftState draft, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     await SaveDraft(matchId, NormalizeDraft(draft), cache, cancellationToken);
@@ -465,6 +486,8 @@ static IResult? RequireAdmin(DraftContextResult draftContext) =>
     draftContext.IsAdmin ? null : Results.StatusCode(StatusCodes.Status403Forbidden);
 
 static string DraftCacheKey(int matchId) => $"drafts:{matchId}";
+
+static string CompletedLiveMatchCacheKey(int matchId) => $"live-matches:{matchId}:completed";
 
 static async Task<IReadOnlyList<MatchResponse>> GetMatches(IHttpClientFactory httpClientFactory, bool includeLineups, CancellationToken cancellationToken)
 {
@@ -529,6 +552,18 @@ static async Task<PlayerStatsResponse?> GetPlayerStats(int matchId, IReadOnlyLis
     return await httpResponse.Content.ReadFromJsonAsync<PlayerStatsResponse>(AppJson.Options, cancellationToken);
 }
 
+static async Task<CompletedLiveMatchResult?> GetCompletedLiveMatch(int matchId, IDistributedCache cache, CancellationToken cancellationToken)
+{
+    var cachedCompleted = await cache.GetStringAsync(CompletedLiveMatchCacheKey(matchId), cancellationToken);
+
+    return cachedCompleted is null
+        ? null
+        : JsonSerializer.Deserialize<CompletedLiveMatchResult>(cachedCompleted, AppJson.Options);
+}
+
+static Task SaveCompletedLiveMatch(int matchId, CompletedLiveMatchResult completed, IDistributedCache cache, CancellationToken cancellationToken) =>
+    cache.SetStringAsync(CompletedLiveMatchCacheKey(matchId), JsonSerializer.Serialize(completed, AppJson.Options), cancellationToken);
+
 static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken)
 {
     var draftContext = await GetDraftContext(passkey, matchId, httpClientFactory, cache, cancellationToken);
@@ -544,9 +579,60 @@ static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, IHt
     }
 
     var match = draftContext.Match!;
+    var completed = await GetCompletedLiveMatch(matchId, cache, cancellationToken);
+    if (completed is not null)
+    {
+        return new LiveMatchResult(ToCompletedLiveMatchResponse(match, draft, completed), null);
+    }
+
+    if (match.HasFinished)
+    {
+        completed = await FinalizeCompletedLiveMatch(match, draft, httpClientFactory, cache, cancellationToken);
+
+        return new LiveMatchResult(ToCompletedLiveMatchResponse(match, draft, completed), null);
+    }
+
     var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), httpClientFactory, cancellationToken);
 
     return new LiveMatchResult(ToLiveMatchResponse(match, draft, stats), null);
+}
+
+static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResponse match, DraftState draft, IHttpClientFactory httpClientFactory, IDistributedCache cache, CancellationToken cancellationToken)
+{
+    var allPlayerNames = AllLineupPlayers(match)
+        .Select(player => player.Name)
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+    var allStats = await GetPlayerStats(match.Id, allPlayerNames, httpClientFactory, cancellationToken)
+        ?? new PlayerStatsResponse(match.Id.ToString(), [], allPlayerNames);
+    var draftedPlayerNames = draft.Picks.Select(pick => pick.PlayerName).ToHashSet(StringComparer.Ordinal);
+    var draftedStats = allStats.Players
+        .Where(player => draftedPlayerNames.Contains(player.Name))
+        .ToArray();
+    var statsByPlayerName = draftedStats.ToDictionary(player => player.Name, StringComparer.Ordinal);
+    var squads = draft.Picks
+        .GroupBy(pick => pick.UserName, StringComparer.Ordinal)
+        .Select(group => new LiveSquadFinalScoreResponse(
+            group.Key,
+            group.Sum(pick => statsByPlayerName.TryGetValue(pick.PlayerName, out var player) ? LivePlayerPoints(player, LiveScoringConfig.PointMultipliers) : 0)))
+        .ToArray();
+    var winningScore = squads.Length == 0 ? 0 : squads.Max(squad => squad.TotalPoints);
+    var winners = squads
+        .Where(squad => squad.TotalPoints == winningScore)
+        .Select(squad => squad.UserName)
+        .ToArray();
+    var completed = new CompletedLiveMatchResult(
+        match,
+        winners,
+        squads,
+        draftedStats,
+        allStats.Players,
+        LiveScoringConfig.PointMultipliers.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
+        DateTimeOffset.UtcNow);
+
+    await SaveCompletedLiveMatch(match.Id, completed, cache, cancellationToken);
+
+    return completed;
 }
 
 static async Task<MatchResponse?> GetMatch(int matchId, IHttpClientFactory httpClientFactory, CancellationToken cancellationToken)
@@ -810,11 +896,13 @@ static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? dr
     match.HasStarted,
     match.HasFinished);
 
-static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, PlayerStatsResponse? stats)
+static LiveMatchResponse ToCompletedLiveMatchResponse(MatchResponse match, DraftState draft, CompletedLiveMatchResult completed) =>
+    ToLiveMatchResponse(match, draft, new PlayerStatsResponse(match.Id.ToString(), completed.DraftedPlayerStats, []), completed);
+
+static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, PlayerStatsResponse? stats, CompletedLiveMatchResult? completed = null)
 {
     var playersByName = stats?.Players.ToDictionary(player => player.Name, StringComparer.Ordinal) ?? [];
-    var teamsByPlayerName = match.Lineups
-        .SelectMany(lineup => lineup.Starters.Concat(lineup.Bench).Select(player => new { player.Name, lineup.TeamName }))
+    var teamsByPlayerName = AllLineupPlayers(match)
         .GroupBy(player => player.Name, StringComparer.Ordinal)
         .ToDictionary(group => group.Key, group => group.First().TeamName, StringComparer.Ordinal);
 
@@ -825,8 +913,15 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
             group.Select(pick => ToLivePlayerResponse(pick.PlayerName, playersByName, teamsByPlayerName)).ToArray()))
         .ToArray();
 
-    return new LiveMatchResponse(match, squads);
+    var finalResult = completed is null
+        ? null
+        : new LiveMatchFinalResultResponse(completed.Winners, completed.Squads, completed.FinalizedAt);
+
+    return new LiveMatchResponse(match, squads, finalResult);
 }
+
+static IEnumerable<(string Name, string TeamName)> AllLineupPlayers(MatchResponse match) =>
+    match.Lineups.SelectMany(lineup => lineup.Starters.Concat(lineup.Bench).Select(player => (player.Name, lineup.TeamName)));
 
 static LivePlayerResponse ToLivePlayerResponse(string playerName, IReadOnlyDictionary<string, PlayerStatsPlayerResponse> playersByName, IReadOnlyDictionary<string, string> teamsByPlayerName)
 {
@@ -836,6 +931,45 @@ static LivePlayerResponse ToLivePlayerResponse(string playerName, IReadOnlyDicti
     }
 
     return new LivePlayerResponse(playerName, teamsByPlayerName.GetValueOrDefault(playerName), []);
+}
+
+static int LivePlayerPoints(PlayerStatsPlayerResponse player, IReadOnlyDictionary<string, int> pointMultipliers) =>
+    player.Categories
+        .SelectMany(category => category.Stats)
+        .GroupBy(stat => stat.Key, StringComparer.Ordinal)
+        .Select(group => group.First())
+        .Sum(stat => LiveStatPoints(stat, pointMultipliers));
+
+static int LiveStatPoints(PlayerStatResponse stat, IReadOnlyDictionary<string, int> pointMultipliers) =>
+    NumericStatValue(stat.Value) * pointMultipliers.GetValueOrDefault(stat.Key, 0);
+
+static int NumericStatValue(object? value)
+{
+    if (value is null)
+    {
+        return 0;
+    }
+
+    if (value is JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Number => element.TryGetInt32(out var intValue) ? intValue : (int)Math.Round(element.GetDouble()),
+            JsonValueKind.String => int.TryParse(element.GetString(), out var stringValue) ? stringValue : 0,
+            _ => 0
+        };
+    }
+
+    return value switch
+    {
+        int intValue => intValue,
+        long longValue => (int)longValue,
+        decimal decimalValue => (int)Math.Round(decimalValue),
+        double doubleValue when double.IsFinite(doubleValue) => (int)Math.Round(doubleValue),
+        float floatValue when float.IsFinite(floatValue) => (int)Math.Round(floatValue),
+        string stringValue when int.TryParse(stringValue, out var parsed) => parsed,
+        _ => 0
+    };
 }
 
 static LeagueUser[] SeededUsers() =>

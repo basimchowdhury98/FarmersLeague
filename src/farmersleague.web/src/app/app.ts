@@ -490,6 +490,27 @@ export class App {
     return squad.players.reduce((total, player) => total + this.livePlayerPoints(player), 0);
   }
 
+  protected liveSquadFinalPoints(squad: LiveSquad) {
+    return this.liveMatch()?.finalResult?.squads.find((finalSquad) => finalSquad.userName === squad.userName)?.totalPoints ?? this.liveSquadPoints(squad);
+  }
+
+  protected isLiveMatchFinal() {
+    return this.liveMatch()?.finalResult !== null;
+  }
+
+  protected liveMatchWinnerText() {
+    const winners = this.liveMatch()?.finalResult?.winners ?? [];
+    if (winners.length === 0) {
+      return 'Winner pending';
+    }
+
+    if (winners.length === 1) {
+      return `Winner: ${winners[0]}`;
+    }
+
+    return `Tie: ${winners.join(', ')}`;
+  }
+
   protected liveStatPoints(stat: PlayerStat) {
     return liveStatPoints(stat);
   }

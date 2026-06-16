@@ -1,11 +1,13 @@
 /**
  * As a drafted league user, I want a completed draft to automatically open a live match page showing every user's drafted
- * players and all available scraper stats, so that I can follow each squad's performance with my own squad emphasized.
+ * players and all available scraper stats, then finalize completed real matches with squad totals, winner details, and a
+ * cached final stats snapshot, so that I can follow each squad's performance and preserve complete match data for analysis.
  */
 describe('Live match drafted player stats', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
   const fullBenchPlayerCount = 15;
+  const scraperBaseUrl = 'http://localhost:5082';
 
   let match;
   let matchLabel;
@@ -70,9 +72,35 @@ describe('Live match drafted player stats', () => {
     });
   };
 
+  const resetScraperMatches = () => {
+    cy.request('POST', `${scraperBaseUrl}/api/testing/world-cup-2026/games/reset`)
+      .its('status')
+      .should('equal', 204);
+  };
+
+  const setScraperMatchStatus = (status) => {
+    cy.request('PUT', `${scraperBaseUrl}/api/testing/world-cup-2026/games/${match.id}/status`, status)
+      .its('status')
+      .should('equal', 204);
+  };
+
+  const clearCompletedLiveMatch = () => {
+    cy.request('DELETE', `/api/testing/live-matches/${match.id}/completed`)
+      .its('status')
+      .should('equal', 204);
+  };
+
+  const cachedCompletedLiveMatch = () => cy.request(`/api/testing/live-matches/${match.id}/completed`);
+
   beforeEach(() => {
+    resetScraperMatches();
     loadDraftableMatch();
     cy.then(() => cy.request('DELETE', `/api/testing/drafts/${match.id}`).its('status').should('equal', 204));
+    cy.then(() => clearCompletedLiveMatch());
+  });
+
+  afterEach(() => {
+    resetScraperMatches();
   });
 
   // GIVEN a drafted player has scraper stats but none of those stats contribute points
@@ -294,5 +322,151 @@ describe('Live match drafted player stats', () => {
     cy.testGet('no-access').should('be.visible').and('contain.text', 'No access');
     cy.testGet('live-match-page').should('not.exist');
     cy.testGet('live-player-card').should('not.exist');
+  });
+
+  // GIVEN a draft is complete, the scraper says the match has finished, and final player stats are available
+  // WHEN Alice opens that match's live page
+  // THEN the page shows the completed match result, each drafted squad's final total, and the winning user based on drafted players' points
+  it('shows the completed match winner and final squad totals after the scraper marks the match finished', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: true });
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.testGet('live-match-result').should('be.visible').and('contain.text', 'Final result');
+    cy.testGet('live-match-winner').should('be.visible').and('contain.text', 'Winner');
+    cy.testGet('live-squad').each(($squad) => {
+      cy.wrap($squad).find('[data-test="live-squad-final-points"]').should('contain.text', 'pts');
+    });
+    cy.testGet('live-match-page').invoke('text').then((pageText) => {
+      cachedCompletedLiveMatch().then(({ body }) => {
+        expect(body.winners, 'cached winners').to.have.length.greaterThan(0);
+        body.winners.forEach((winner) => expect(pageText).to.contain(winner));
+        body.squads.forEach((squad) => {
+          expect(pageText).to.contain(squad.userName);
+          expect(pageText).to.contain(`${squad.totalPoints} pts`);
+        });
+      });
+    });
+  });
+
+  // GIVEN a draft is complete and the scraper says the match has finished
+  // WHEN the live match result is finalized
+  // THEN Redis stores a completed match result containing user totals, winner information, drafted player stats, all scraper player stats including undrafted players, and the exact points config used for scoring
+  it('stores the finalized match result in Redis with all player stats and the scoring config snapshot', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: true });
+
+    cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`).its('status').should('equal', 200);
+
+    cachedCompletedLiveMatch().then(({ body }) => {
+      expect(body.match.id).to.equal(match.id);
+      expect(body.winners, 'winners').to.have.length.greaterThan(0);
+      expect(body.squads.map((squad) => squad.userName)).to.have.members(['Alice', 'Bob']);
+      expect(body.draftedPlayerStats, 'drafted player stats').to.have.length(6);
+      expect(body.allPlayerStats, 'all player stats').to.have.length.greaterThan(body.draftedPlayerStats.length);
+      expect(body.allPlayerStats.map((player) => player.name), 'undrafted bench stats').to.include(homeBench[0]);
+      expect(body.pointsConfig, 'points config snapshot').to.include({ goals: 10, goals_prevented: 0 });
+    });
+  });
+
+  // GIVEN a completed match result has been finalized with drafted and undrafted player stats
+  // WHEN the frontend requests the live match page data
+  // THEN the API response includes only drafted players' stats and does not include undrafted player stats
+  it('does not send undrafted player stats to the frontend live match response', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: true });
+
+    cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`).then(({ body }) => {
+      const frontendPlayerNames = body.squads.flatMap((squad) => squad.players.map((player) => player.name));
+
+      expect(frontendPlayerNames).to.have.members(completedPicks().map((pick) => pick.playerName));
+      expect(frontendPlayerNames).not.to.include(homeBench[0]);
+      expect(body.allPlayerStats, 'analysis-only all player stats').to.equal(undefined);
+      expect(body.draftedPlayerStats, 'analysis-only drafted stats snapshot').to.equal(undefined);
+      expect(body.finalResult.winners, 'frontend winner summary').to.have.length.greaterThan(0);
+    });
+  });
+
+  // GIVEN a completed match result has already been finalized and stored in Redis
+  // WHEN Alice opens the same live match page again
+  // THEN the page shows the stored final result without recalculating it from newer scraper stats or a changed points config
+  it('reuses the cached completed match result for later live page requests', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: true });
+
+    cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`);
+    cachedCompletedLiveMatch().then(({ body: firstCachedResult }) => {
+      cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`);
+      cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`);
+
+      cachedCompletedLiveMatch().then(({ body: laterCachedResult }) => {
+        expect(laterCachedResult.finalizedAt).to.equal(firstCachedResult.finalizedAt);
+        expect(laterCachedResult.winners).to.deep.equal(firstCachedResult.winners);
+        expect(laterCachedResult.squads).to.deep.equal(firstCachedResult.squads);
+        expect(laterCachedResult.pointsConfig).to.deep.equal(firstCachedResult.pointsConfig);
+      });
+    });
+  });
+
+  // GIVEN Alice has a completed draft's live match page open while the real match is ongoing
+  // WHEN the scraper changes the match to finished and the live match result is finalized
+  // THEN Alice's open page receives a WebSocket update and shows the final winner without requiring a manual refresh
+  it('updates an open live match page with the final winner over the live updates socket', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: false });
+
+    cy.visit(livePath(alicePasskey));
+    cy.testGet('live-match-page').should('be.visible');
+    cy.testGet('live-match-result').should('not.exist');
+
+    setScraperMatchStatus({ started: true, finished: true });
+
+    cy.testGet('live-match-result', { timeout: 15000 }).should('be.visible').and('contain.text', 'Final result');
+    cy.testGet('live-match-winner').should('be.visible').and('contain.text', 'Winner');
+  });
+
+  // GIVEN a draft is complete, the scraper says the match has finished, and two or more users have the same highest final score
+  // WHEN Alice opens that match's live page
+  // THEN the page shows the match ended in a tie and lists all tied users as winners
+  it('shows a tied final result when multiple users share the highest final score', () => {
+    completeDraft();
+    cy.request('PUT', `/api/testing/live-matches/${match.id}/completed`, {
+      match,
+      winners: ['Alice', 'Bob'],
+      squads: [
+        { userName: 'Alice', totalPoints: 12 },
+        { userName: 'Bob', totalPoints: 12 }
+      ],
+      draftedPlayerStats: [],
+      allPlayerStats: [],
+      pointsConfig: { goals: 10 },
+      finalizedAt: new Date().toISOString()
+    }).its('status').should('equal', 204);
+    setScraperMatchStatus({ started: true, finished: true });
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.testGet('live-match-result').should('be.visible').and('contain.text', 'Tie');
+    cy.testGet('live-match-tie-winners').should('contain.text', 'Alice').and('contain.text', 'Bob');
+    cy.testGet('live-squad-final-points').should('contain.text', '12 pts');
+  });
+
+  // GIVEN a draft is complete and the scraper says the match has started but has not finished
+  // WHEN Alice opens the live match page
+  // THEN the page continues to show live squad totals without a final winner banner and does not store a completed match result
+  it('does not show or cache a final winner while the match is still ongoing', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: false });
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.testGet('live-match-page').should('be.visible');
+    cy.testGet('live-squad-points').should('have.length', 2).and('contain.text', 'pts');
+    cy.testGet('live-match-result').should('not.exist');
+    cy.request({
+      url: `/api/testing/live-matches/${match.id}/completed`,
+      failOnStatusCode: false
+    }).its('status').should('equal', 404);
   });
 });
