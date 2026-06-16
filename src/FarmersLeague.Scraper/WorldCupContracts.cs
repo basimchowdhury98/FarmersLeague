@@ -39,6 +39,20 @@ public record WorldCupLineupTeamResponse(
     IReadOnlyList<WorldCupLineupPlayerResponse> Starting11,
     IReadOnlyList<WorldCupLineupPlayerResponse> Bench);
 
+public static class WorldCupLineupRules
+{
+    public const int StartingPlayerCount = 11;
+    public const int FullBenchPlayerCount = 15;
+
+    public static bool IsConfirmed(string? lineupType, int homeStarterCount, int homeBenchCount, int awayStarterCount, int awayBenchCount) =>
+        !string.Equals(lineupType, "predicted", StringComparison.OrdinalIgnoreCase)
+        && HasFullSquad(homeStarterCount, homeBenchCount)
+        && HasFullSquad(awayStarterCount, awayBenchCount);
+
+    public static bool HasFullSquad(int starterCount, int benchCount) =>
+        starterCount == StartingPlayerCount && benchCount == FullBenchPlayerCount;
+}
+
 public record WorldCupLineupPlayerResponse(
     string Id,
     string Name,

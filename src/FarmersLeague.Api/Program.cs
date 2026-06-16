@@ -7,8 +7,6 @@ using Microsoft.Extensions.Caching.Distributed;
 
 var builder = WebApplication.CreateBuilder(args);
 const int MaxPicksPerUser = 3;
-const int StartingPlayerCount = 11;
-const int FullBenchPlayerCount = 15;
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -749,7 +747,7 @@ static bool HasMatchStarted(MatchResponse match) => match.HasStarted || match.Ha
 
 static bool HasConfirmedFullSquads(MatchResponse match) =>
     match.Lineups.Count >= 2
-    && match.Lineups.All(lineup => lineup.Starters.Count == StartingPlayerCount && lineup.Bench.Count == FullBenchPlayerCount);
+    && match.Lineups.All(lineup => WorldCupLineupRules.HasFullSquad(lineup.Starters.Count, lineup.Bench.Count));
 
 static bool HasPlayerInMatch(MatchResponse match, string playerName) =>
     match.Lineups.SelectMany(lineup => lineup.Starters).Any(starter => string.Equals(starter.Name, playerName, StringComparison.Ordinal));

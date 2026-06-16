@@ -6,11 +6,13 @@ describe('Upcoming match draft lobby', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
   const carolPasskey = 'carol-3333-3333-3333';
+  const predictedLineupMatchId = 1003;
   const fullBenchPlayerCount = 15;
   const lineupUnavailableMessage = 'No lineup available yet. Draft can\'t start until the starting lineup is available.';
 
   let match;
   let noLineupMatch;
+  let predictedLineupMatch;
   let matchLabel;
   let noLineupMatchLabel;
   let alicePlayers;
@@ -93,6 +95,14 @@ describe('Upcoming match draft lobby', () => {
     });
   };
 
+  const loadPredictedLineupMatch = () => {
+    return cy.request('/api/matches').then(({ body }) => {
+      predictedLineupMatch = body.find((candidate) => candidate.id === predictedLineupMatchId);
+
+      expect(predictedLineupMatch, 'predicted-lineup scraper match').to.exist;
+    });
+  };
+
   const setDraft = (draftState) => {
     cy.request('PUT', `/api/testing/drafts/${match.id}`, draftState)
       .its('status')
@@ -101,6 +111,12 @@ describe('Upcoming match draft lobby', () => {
 
   const setNoLineupDraft = (draftState) => {
     cy.request('PUT', `/api/testing/drafts/${noLineupMatch.id}`, draftState)
+      .its('status')
+      .should('equal', 204);
+  };
+
+  const setPredictedLineupDraft = (draftState) => {
+    cy.request('PUT', `/api/testing/drafts/${predictedLineupMatch.id}`, draftState)
       .its('status')
       .should('equal', 204);
   };
@@ -304,6 +320,25 @@ describe('Upcoming match draft lobby', () => {
         cy.testGet('lineup-unavailable-banner').should('be.visible').and('contain.text', lineupUnavailableMessage);
         cy.testGet('draft-start-warning').should('not.exist');
         cy.testGet('start-draft-button').should('be.disabled');
+      });
+  });
+
+  // GIVEN an open draft has at least two joined users but the Preview tab lineup is marked as predicted
+  // WHEN a joined user opens the draft page
+  // THEN the lineup-unavailable banner uses the current unavailable-lineup message, Start draft is disabled, and no draftable players are shown
+  it('treats a predicted Preview tab lineup as unavailable on the draft page', () => {
+    loadPredictedLineupMatch()
+      .then(() => {
+        cy.request('DELETE', `/api/testing/drafts/${predictedLineupMatch.id}`).its('status').should('equal', 204);
+        setPredictedLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+
+        cy.visit(`/${alicePasskey}/matches/${predictedLineupMatch.id}/draft`);
+
+        cy.testGet('lineup-unavailable-banner').should('be.visible').and('contain.text', lineupUnavailableMessage);
+        cy.testGet('draft-start-warning').should('not.exist');
+        cy.testGet('start-draft-button').should('be.disabled');
+        cy.testGet('draft-player').should('not.exist');
+        cy.testGet('bench').should('not.exist');
       });
   });
 

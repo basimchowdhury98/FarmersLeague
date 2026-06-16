@@ -42,7 +42,11 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
     {
         if (UseMockMode())
         {
-            return string.Equals(gameId, MockGameId, StringComparison.Ordinal) ? MockLineup() : null;
+            var mockLineup = MockLineup(gameId);
+
+            return mockLineup is not null && IsConfirmedLineup(mockLineup)
+                ? mockLineup
+                : null;
         }
 
         if (UseFixtureData())
@@ -248,19 +252,46 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
 
     private static bool IsConfirmedLineup(JsonElement lineup)
     {
-        return string.Equals(OptionalString(lineup, "lineupType"), "confirmed", StringComparison.OrdinalIgnoreCase)
-            && TryGetObject(lineup, "homeTeam", out var homeTeam)
-            && TryGetObject(lineup, "awayTeam", out var awayTeam)
-            && HasConfirmedTeamLineup(homeTeam)
-            && HasConfirmedTeamLineup(awayTeam);
+        if (!TryGetObject(lineup, "homeTeam", out var homeTeam)
+            || !TryGetObject(lineup, "awayTeam", out var awayTeam)
+            || !TryGetTeamLineupCounts(homeTeam, out var homeStarterCount, out var homeBenchCount)
+            || !TryGetTeamLineupCounts(awayTeam, out var awayStarterCount, out var awayBenchCount))
+        {
+            return false;
+        }
+
+        return WorldCupLineupRules.IsConfirmed(
+            OptionalString(lineup, "lineupType"),
+            homeStarterCount,
+            homeBenchCount,
+            awayStarterCount,
+            awayBenchCount);
     }
 
-    private static bool HasConfirmedTeamLineup(JsonElement team)
+    private static bool IsConfirmedLineup(WorldCupLineupResponse lineup)
     {
-        return TryGetArray(team, "starters", out var starters)
-            && starters.GetArrayLength() == 11
-            && TryGetArray(team, "subs", out var subs)
-            && subs.GetArrayLength() > 0;
+        return WorldCupLineupRules.IsConfirmed(
+            lineup.LineupType,
+            lineup.HomeTeam.Starting11.Count,
+            lineup.HomeTeam.Bench.Count,
+            lineup.AwayTeam.Starting11.Count,
+            lineup.AwayTeam.Bench.Count);
+    }
+
+    private static bool TryGetTeamLineupCounts(JsonElement team, out int starterCount, out int benchCount)
+    {
+        starterCount = 0;
+        benchCount = 0;
+
+        if (!TryGetArray(team, "starters", out var starters) || !TryGetArray(team, "subs", out var subs))
+        {
+            return false;
+        }
+
+        starterCount = starters.GetArrayLength();
+        benchCount = subs.GetArrayLength();
+
+        return true;
     }
 
     private static WorldCupLineupTeamResponse ToLineupTeam(JsonElement team) => new(

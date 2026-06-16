@@ -4,6 +4,8 @@ public partial class FotMobWorldCupScraper
 {
     private const string MockGameId = "1001";
     private const string MockNoLineupGameId = "1002";
+    private const string MockPredictedLineupGameId = "1003";
+    private const string MockIncompleteBenchGameId = "1004";
     private const string FixtureGameId = "1001";
     private static readonly ConcurrentDictionary<string, WorldCupGameStatusResponse> MockGameStatusOverrides = new(StringComparer.Ordinal);
 
@@ -40,6 +42,24 @@ public partial class FotMobWorldCupScraper
             "1",
             "Group stage",
             DateTimeOffset.UtcNow.AddMinutes(60),
+            new WorldCupGameStatusResponse(false, false, null, "Mock mode", null)),
+        new(
+            MockPredictedLineupGameId,
+            new WorldCupTeamResponse("80", "Argentina", "ARG"),
+            new WorldCupTeamResponse("90", "Algeria", "ALG"),
+            "Group C",
+            "1",
+            "Group stage",
+            DateTimeOffset.UtcNow.AddMinutes(120),
+            new WorldCupGameStatusResponse(false, false, null, "Mock mode", null)),
+        new(
+            MockIncompleteBenchGameId,
+            new WorldCupTeamResponse("100", "Iraq", "IRQ"),
+            new WorldCupTeamResponse("110", "Norway", "NOR"),
+            "Group D",
+            "1",
+            "Group stage",
+            DateTimeOffset.UtcNow.AddMinutes(30),
             new WorldCupGameStatusResponse(false, false, null, "Mock mode", null))
     ]);
 
@@ -48,17 +68,34 @@ public partial class FotMobWorldCupScraper
             .Select(game => MockGameStatusOverrides.TryGetValue(game.Id, out var status) ? game with { Status = status } : game)
             .ToArray();
 
-    private static WorldCupLineupResponse MockLineup() => new(
-        MockGameId,
-        "confirmed",
+    private static WorldCupLineupResponse? MockLineup(string gameId) => gameId switch
+    {
+        MockGameId => MockConfirmedLineup(),
+        MockPredictedLineupGameId => MockPredictedLineup(),
+        MockIncompleteBenchGameId => MockIncompleteBenchLineup(),
+        _ => null
+    };
+
+    private static WorldCupLineupResponse MockConfirmedLineup() => CanadaMexicoLineup(MockGameId, "standard", "mock");
+
+    private static WorldCupLineupResponse MockPredictedLineup() => new(
+        MockPredictedLineupGameId,
+        "predicted",
         "mock",
-        new WorldCupLineupTeamResponse("50", "Canada", "4-3-3", FixtureCanadaStarters(), FixtureCanadaBench()),
-        new WorldCupLineupTeamResponse("42", "Mexico", "4-3-3", FixtureMexicoStarters(), FixtureMexicoBench()));
+        new WorldCupLineupTeamResponse("80", "Argentina", "4-3-3", FixtureCanadaStarters(), FixtureCanadaBench()),
+        new WorldCupLineupTeamResponse("90", "Algeria", "4-3-3", FixtureMexicoStarters(), FixtureMexicoBench()));
+
+    private static WorldCupLineupResponse MockIncompleteBenchLineup() => new(
+        MockIncompleteBenchGameId,
+        "standard",
+        "mock",
+        new WorldCupLineupTeamResponse("100", "Iraq", "4-3-3", FixtureCanadaStarters(), FixtureCanadaBench().Take(5).ToArray()),
+        new WorldCupLineupTeamResponse("110", "Norway", "4-3-3", FixtureMexicoStarters(), FixtureMexicoBench().Take(5).ToArray()));
 
     private WorldCupPlayerStatsResponse MockPlayerStats(string gameId, IReadOnlyList<string> requestedPlayers)
     {
         var step = Math.Min(Interlocked.Increment(ref mockPlayerStatsStep), 10);
-        var lineup = MockLineup();
+        var lineup = MockConfirmedLineup();
         var players = MockLineupPlayers(lineup)
             .Select((player, index) => MockPlayerStatsPlayer(player.Team, player.Player, index, step))
             .ToArray();
@@ -207,10 +244,12 @@ public partial class FotMobWorldCupScraper
             new WorldCupGameStatusResponse(false, false, null, null, null))
     ];
 
-    private static WorldCupLineupResponse FixtureLineup() => new(
-        FixtureGameId,
-        "confirmed",
-        "fixture",
+    private static WorldCupLineupResponse FixtureLineup() => CanadaMexicoLineup(FixtureGameId, "confirmed", "fixture");
+
+    private static WorldCupLineupResponse CanadaMexicoLineup(string gameId, string lineupType, string source) => new(
+        gameId,
+        lineupType,
+        source,
         new WorldCupLineupTeamResponse("50", "Canada", "4-3-3", FixtureCanadaStarters(), FixtureCanadaBench()),
         new WorldCupLineupTeamResponse("42", "Mexico", "4-3-3", FixtureMexicoStarters(), FixtureMexicoBench()));
 

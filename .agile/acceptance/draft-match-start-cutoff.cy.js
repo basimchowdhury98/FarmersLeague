@@ -7,10 +7,14 @@ describe('Draft match start cutoff', () => {
   const bobPasskey = 'bob-2222-2222-2222';
   const draftableMatchId = 1001;
   const noLineupMatchId = 1002;
+  const predictedLineupMatchId = 1003;
+  const incompleteBenchMatchId = 1004;
   const fullBenchPlayerCount = 15;
 
   let match;
   let noLineupMatch;
+  let predictedLineupMatch;
+  let incompleteBenchMatch;
   let matchLabel;
   let noLineupMatchLabel;
   let homeStarters;
@@ -20,9 +24,13 @@ describe('Draft match start cutoff', () => {
     cy.request('/api/matches').then(({ body }) => {
       match = body.find((candidate) => candidate.id === draftableMatchId);
       noLineupMatch = body.find((candidate) => candidate.id === noLineupMatchId);
+      predictedLineupMatch = body.find((candidate) => candidate.id === predictedLineupMatchId);
+      incompleteBenchMatch = body.find((candidate) => candidate.id === incompleteBenchMatchId);
 
       expect(match, 'draftable scraper match').to.exist;
       expect(noLineupMatch, 'no-lineup scraper match').to.exist;
+      expect(predictedLineupMatch, 'predicted-lineup scraper match').to.exist;
+      expect(incompleteBenchMatch, 'incomplete-bench scraper match').to.exist;
 
       matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
       noLineupMatchLabel = `${noLineupMatch.homeTeam} vs ${noLineupMatch.awayTeam}`;
@@ -51,6 +59,18 @@ describe('Draft match start cutoff', () => {
       .should('equal', 204);
   };
 
+  const setPredictedLineupDraft = (draftState) => {
+    cy.request('PUT', `/api/testing/drafts/${predictedLineupMatchId}`, draftState)
+      .its('status')
+      .should('equal', 204);
+  };
+
+  const setIncompleteBenchDraft = (draftState) => {
+    cy.request('PUT', `/api/testing/drafts/${incompleteBenchMatchId}`, draftState)
+      .its('status')
+      .should('equal', 204);
+  };
+
   const completedPicks = () => [
     { userName: 'Alice', playerName: homeStarters[0] },
     { userName: 'Bob', playerName: awayStarters[0] },
@@ -69,6 +89,8 @@ describe('Draft match start cutoff', () => {
     cy.resetScraperMatches();
     cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
     cy.request('DELETE', `/api/testing/drafts/${noLineupMatchId}`).its('status').should('equal', 204);
+    cy.request('DELETE', `/api/testing/drafts/${predictedLineupMatchId}`).its('status').should('equal', 204);
+    cy.request('DELETE', `/api/testing/drafts/${incompleteBenchMatchId}`).its('status').should('equal', 204);
     loadMatches();
     loadConfirmedLineups();
     cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
@@ -78,6 +100,8 @@ describe('Draft match start cutoff', () => {
     cy.resetScraperMatches();
     cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
     cy.request('DELETE', `/api/testing/drafts/${noLineupMatchId}`).its('status').should('equal', 204);
+    cy.request('DELETE', `/api/testing/drafts/${predictedLineupMatchId}`).its('status').should('equal', 204);
+    cy.request('DELETE', `/api/testing/drafts/${incompleteBenchMatchId}`).its('status').should('equal', 204);
   });
 
   // GIVEN an upcoming match from the scraper has not started or finished and no draft exists
@@ -92,9 +116,9 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN an upcoming match has confirmed starting 11s and full benches for both teams, an open draft exists, and at least two users have joined
+  // GIVEN an upcoming match has Preview tab lineup data that is not predicted, confirmed starting 11s and full benches for both teams, an open draft exists, and at least two users have joined
   // WHEN an admin starts the draft before the scraper says the match has started
-  // THEN the draft starts successfully
+  // THEN the draft starts successfully using the Preview tab lineup
   it('starts a joined draft before the scraper says the match has started', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -152,15 +176,49 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN a match has not started but confirmed starting lineups and full benches are unavailable
+  // GIVEN a match has not started but the Preview tab lineup data is absent
   // WHEN an admin attempts to start its draft
   // THEN the draft is not started and an error explains that starting lineups and full benches are not confirmed
-  it('rejects starting a draft before confirmed lineups and full benches are available', () => {
+  it('rejects starting a draft before the Preview tab lineup is available', () => {
     setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
     cy.request({
       method: 'POST',
       url: `/api/drafts/${noLineupMatchId}/start`,
+      body: { passkey: alicePasskey, draftOrderMode: 'roundRobin' },
+      failOnStatusCode: false
+    }).then((response) => {
+      expect(response.status).to.equal(400);
+      expect(response.body.message).to.equal('Starting lineups and full benches are not confirmed');
+    });
+  });
+
+  // GIVEN a match has not started and the Preview tab lineup data is marked as predicted
+  // WHEN an admin attempts to start its draft
+  // THEN the draft is not started and an error explains that starting lineups and full benches are not confirmed
+  it('rejects starting a draft while the Preview tab lineup is predicted', () => {
+    setPredictedLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+
+    cy.request({
+      method: 'POST',
+      url: `/api/drafts/${predictedLineupMatchId}/start`,
+      body: { passkey: alicePasskey, draftOrderMode: 'roundRobin' },
+      failOnStatusCode: false
+    }).then((response) => {
+      expect(response.status).to.equal(400);
+      expect(response.body.message).to.equal('Starting lineups and full benches are not confirmed');
+    });
+  });
+
+  // GIVEN a match has not started and the Preview tab lineup data is not predicted but does not include full benches for both teams
+  // WHEN an admin attempts to start its draft
+  // THEN the draft is not started and an error explains that starting lineups and full benches are not confirmed
+  it('rejects starting a draft when the Preview tab lineup does not include full benches', () => {
+    setIncompleteBenchDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+
+    cy.request({
+      method: 'POST',
+      url: `/api/drafts/${incompleteBenchMatchId}/start`,
       body: { passkey: alicePasskey, draftOrderMode: 'roundRobin' },
       failOnStatusCode: false
     }).then((response) => {
