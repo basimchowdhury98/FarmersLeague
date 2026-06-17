@@ -31,6 +31,19 @@ builder.Services.AddStackExchangeRedisCache(options =>
 });
 builder.Services.AddSingleton<LiveDraftConnections>();
 builder.Services.AddSingleton<LiveMatchTrackers>();
+builder.Services.AddHostedService(sp => new CompletedLiveMatchFinalizationHostedService(
+    sp,
+    async (services, cancellationToken) =>
+    {
+        using var scope = services.CreateScope();
+        await FinalizeCompletedLiveMatches(
+            scope.ServiceProvider.GetRequiredService<IWorldCupScraper>(),
+            scope.ServiceProvider.GetRequiredService<IDistributedCache>(),
+            scope.ServiceProvider.GetRequiredService<ILogger<Program>>(),
+            cancellationToken);
+    },
+    sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<ILogger<CompletedLiveMatchFinalizationHostedService>>()));
 
 var app = builder.Build();
 
@@ -190,7 +203,7 @@ app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftStartReq
     {
         Status = DraftStatuses.Started,
         DraftOrder = randomizedDraftOrder,
-        DraftTurnOrder = CreateDraftTurnOrder(randomizedDraftOrder, request.DraftOrderMode),
+        DraftTurnOrder = DraftRules.CreateTurnOrder(randomizedDraftOrder, request.DraftOrderMode),
         Picks = []
     };
     var response = await SaveAndBroadcastDraft(matchId, match, draft, cache, liveDraftConnections, cancellationToken);
@@ -212,7 +225,7 @@ app.MapDelete("/api/drafts/{matchId:int}", async (int matchId, string passkey, I
     }
 
     var draft = await GetDraft(matchId, cache, cancellationToken);
-    if (draft is not null && IsDraftComplete(draft))
+    if (draft is not null && DraftRules.IsComplete(draft))
     {
         return Results.BadRequest(new DraftPickErrorResponse("Draft complete"));
     }
@@ -306,7 +319,7 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
         return Results.BadRequest(new DraftPickErrorResponse("Draft has not started"));
     }
 
-    if (IsDraftComplete(draft))
+    if (DraftRules.IsComplete(draft))
     {
         return Results.BadRequest(new DraftPickErrorResponse("Draft complete"));
     }
@@ -337,7 +350,7 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
         Picks = draft.Picks.Concat([new DraftPick(userName, request.PlayerName)]).ToArray()
     };
 
-    if (IsDraftComplete(updatedDraft) && HasMatchStarted(match))
+    if (DraftRules.IsComplete(updatedDraft) && HasMatchStarted(match))
     {
         await RemoveDraft(matchId, cache, cancellationToken);
         await liveDraftConnections.Broadcast(matchId, ToDraftUpdateMessage(NewOpenDraftState([])), cancellationToken);
@@ -346,7 +359,7 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     }
 
     var updatedResponse = await SaveAndBroadcastDraft(matchId, match, updatedDraft, cache, liveDraftConnections, cancellationToken);
-    if (IsDraftComplete(updatedDraft))
+    if (DraftRules.IsComplete(updatedDraft))
     {
         StartLiveMatchTracker(matchId, ToLiveMatchResponse(updatedResponse.Match, updatedDraft, null), scraper, cache, liveMatchTrackers, logger);
     }
@@ -463,9 +476,16 @@ app.MapDelete("/api/testing/live-matches/{matchId:int}/completed", async (int ma
     return Results.NoContent();
 });
 
+app.MapPost("/api/testing/live-matches/finalize-completed", async (IWorldCupScraper scraper, IDistributedCache cache, ILogger<Program> logger, CancellationToken cancellationToken) =>
+{
+    await FinalizeCompletedLiveMatches(scraper, cache, logger, cancellationToken);
+
+    return Results.NoContent();
+});
+
 app.MapPut("/api/testing/drafts/{matchId:int}", async (int matchId, DraftState draft, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, CancellationToken cancellationToken) =>
 {
-    await SaveDraft(matchId, NormalizeDraft(draft), cache, cancellationToken);
+    await SaveDraft(matchId, DraftRules.Normalize(draft), cache, cancellationToken);
     liveMatchTrackers.Remove(matchId);
 
     return Results.NoContent();
@@ -597,7 +617,7 @@ static async Task<LiveMatchResult> GetInitialLiveMatch(string passkey, int match
     }
 
     var draft = await GetDraft(matchId, cache, cancellationToken);
-    if (draft is null || !IsDraftComplete(draft))
+    if (draft is null || !DraftRules.IsComplete(draft))
     {
         return new LiveMatchResult(null, Results.BadRequest(new DraftPickErrorResponse("Match has not started yet")));
     }
@@ -639,7 +659,7 @@ static void StartLiveMatchTracker(int matchId, LiveMatchResponse initialState, I
 static async Task<LiveMatchResponse?> GetTrackableLiveMatch(int matchId, IWorldCupScraper scraper, IDistributedCache cache, ILogger logger, CancellationToken cancellationToken)
 {
     var draft = await GetDraft(matchId, cache, cancellationToken);
-    if (draft is null || !IsDraftComplete(draft))
+    if (draft is null || !DraftRules.IsComplete(draft))
     {
         return null;
     }
@@ -670,6 +690,12 @@ static async Task<LiveMatchResponse?> GetTrackableLiveMatch(int matchId, IWorldC
 
 static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResponse match, DraftState draft, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
+    var existing = await GetCompletedLiveMatch(match.Id, cache, cancellationToken);
+    if (existing is not null)
+    {
+        return existing;
+    }
+
     var allPlayerNames = AllLineupPlayers(match)
         .Select(player => player.Name)
         .Distinct(StringComparer.Ordinal)
@@ -677,6 +703,9 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
     var allStats = await GetPlayerStats(match.Id, allPlayerNames, scraper, cancellationToken)
         ?? new PlayerStatsResponse(match.Id.ToString(), [], allPlayerNames);
     var draftedPlayerNames = draft.Picks.Select(pick => pick.PlayerName).ToHashSet(StringComparer.Ordinal);
+    var draftedByPlayerName = draft.Picks
+        .GroupBy(pick => pick.PlayerName, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group.First().UserName, StringComparer.Ordinal);
     var draftedStats = allStats.Players
         .Where(player => draftedPlayerNames.Contains(player.Name))
         .ToArray();
@@ -697,13 +726,52 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
         winners,
         squads,
         draftedStats,
-        allStats.Players,
+        allStats.Players.Select(player => ToArchivedPlayerStats(player, draftedByPlayerName)).ToArray(),
         LiveScoringConfig.PointMultipliers.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
         DateTimeOffset.UtcNow);
 
     await SaveCompletedLiveMatch(match.Id, completed, cache, cancellationToken);
 
     return completed;
+}
+
+static async Task FinalizeCompletedLiveMatches(IWorldCupScraper scraper, IDistributedCache cache, ILogger logger, CancellationToken cancellationToken)
+{
+    var matches = await HomeMatchesCache.GetOrHydrate(cache, scraper, cancellationToken);
+    foreach (var cachedMatch in matches)
+    {
+        if (!cachedMatch.HasStarted || !cachedMatch.HasFinished || cachedMatch.Draft is null)
+        {
+            continue;
+        }
+
+        var draft = DraftRules.Normalize(cachedMatch.Draft);
+        if (!DraftRules.IsComplete(draft))
+        {
+            continue;
+        }
+
+        if (await GetCompletedLiveMatch(cachedMatch.Id, cache, cancellationToken) is not null)
+        {
+            continue;
+        }
+
+        try
+        {
+            var cachedLineups = await GetStartedDraftLineups(cachedMatch.Id, draft.Status, scraper, cache, logger, cancellationToken);
+            var match = ToMatchResponse(cachedMatch) with { Lineups = cachedLineups };
+            await FinalizeCompletedLiveMatch(match, draft, scraper, cache, cancellationToken);
+            logger.LogInformation("Completed live match {MatchId} finalized by background job", cachedMatch.Id);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Completed live match {MatchId} finalization failed", cachedMatch.Id);
+        }
+    }
 }
 
 static async Task<MatchResponse?> GetMatchMetadata(int matchId, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
@@ -725,7 +793,7 @@ static async Task<MatchResponse?> GetMatch(int matchId, DraftState? draft, bool 
         return null;
     }
 
-    var normalizedDraft = NormalizeDraft(draft);
+    var normalizedDraft = DraftRules.Normalize(draft);
     var lineups = normalizedDraft.Status switch
     {
         DraftStatuses.Started or DraftStatuses.Completed => await GetStartedDraftLineups(matchId, normalizedDraft.Status, scraper, cache, logger, cancellationToken),
@@ -791,36 +859,6 @@ static async Task<DraftState?> GetDraft(int matchId, IDistributedCache cache, Ca
 
 static DraftState NewOpenDraftState(IReadOnlyList<string> joinedUsers) => new(DraftStatuses.Open, joinedUsers, [], null, []);
 
-static DraftState NormalizeDraft(DraftState? draft)
-{
-    if (draft is null)
-    {
-        return NewOpenDraftState([]);
-    }
-
-    var draftOrder = draft.DraftOrder ?? [];
-    var rawJoinedUsers = draft.JoinedUsers ?? [];
-    var joinedUsers = rawJoinedUsers.Count > 0 ? rawJoinedUsers : draftOrder;
-    var status = string.IsNullOrWhiteSpace(draft.Status)
-        ? draftOrder.Count > 0 ? DraftStatuses.Started : DraftStatuses.Open
-        : draft.Status;
-
-    var draftTurnOrder = draft.DraftTurnOrder is { Count: > 0 }
-        ? draft.DraftTurnOrder
-        : CreateDraftTurnOrder(draftOrder, DraftOrderModes.RoundRobin);
-
-    var normalized = draft with
-    {
-        Status = status,
-        JoinedUsers = joinedUsers,
-        DraftOrder = draftOrder,
-        DraftTurnOrder = draftTurnOrder,
-        Picks = draft.Picks ?? []
-    };
-
-    return IsDraftComplete(normalized) ? normalized with { Status = DraftStatuses.Completed } : normalized;
-}
-
 static Task SaveDraft(int matchId, DraftState draft, IDistributedCache cache, CancellationToken cancellationToken) =>
     HomeMatchesCache.SaveDraft(cache, matchId, draft, cancellationToken);
 
@@ -839,8 +877,8 @@ static async Task<DraftResponse> SaveAndBroadcastDraft(int matchId, MatchRespons
 
 static DraftUpdateMessage ToDraftUpdateMessage(DraftState draft)
 {
-    draft = NormalizeDraft(draft);
-    var isComplete = IsDraftComplete(draft);
+    draft = DraftRules.Normalize(draft);
+    var isComplete = DraftRules.IsComplete(draft);
     var status = isComplete ? DraftStatuses.Completed : draft.Status;
     var currentTurn = string.Equals(status, DraftStatuses.Started, StringComparison.Ordinal) && !isComplete ? GetCurrentTurn(draft) : null;
 
@@ -849,18 +887,12 @@ static DraftUpdateMessage ToDraftUpdateMessage(DraftState draft)
 
 static DraftResponse ToDraftResponse(MatchResponse match, DraftState draft)
 {
-    draft = NormalizeDraft(draft);
-    var isComplete = IsDraftComplete(draft);
+    draft = DraftRules.Normalize(draft);
+    var isComplete = DraftRules.IsComplete(draft);
     var status = isComplete ? DraftStatuses.Completed : draft.Status;
     var currentTurn = string.Equals(status, DraftStatuses.Started, StringComparison.Ordinal) && !isComplete ? GetCurrentTurn(draft) : null;
 
     return new DraftResponse(match, status, draft.JoinedUsers, draft.DraftOrder, draft.DraftTurnOrder ?? [], draft.Picks, currentTurn, isComplete);
-}
-
-static bool IsDraftComplete(DraftState draft)
-{
-    var totalTurnCount = DraftTurns(draft).Count;
-    return totalTurnCount > 0 && draft.Picks.Count >= totalTurnCount;
 }
 
 static bool HasMatchStarted(MatchResponse match) => match.HasStarted || match.HasFinished;
@@ -880,7 +912,7 @@ static int PickCountFor(DraftState draft, string userName) =>
 
 static string? GetCurrentTurn(DraftState draft)
 {
-    var turns = DraftTurns(draft);
+    var turns = DraftRules.Turns(draft);
     for (var pickOffset = 0; pickOffset < turns.Count; pickOffset++)
     {
         var turnIndex = draft.Picks.Count + pickOffset;
@@ -901,30 +933,6 @@ static string? GetCurrentTurn(DraftState draft)
 
 static IReadOnlyList<string> CreateRandomDraftOrder(IReadOnlyList<string> joinedUsers) =>
     joinedUsers.OrderBy(_ => Random.Shared.Next()).ToArray();
-
-static IReadOnlyList<string> CreateDraftTurnOrder(IReadOnlyList<string> draftOrder, string? mode)
-{
-    if (draftOrder.Count == 0)
-    {
-        return [];
-    }
-
-    var normalizedMode = string.IsNullOrWhiteSpace(mode) ? DraftOrderModes.RoundRobin : mode;
-    var turns = new List<string>(draftOrder.Count * MaxPicksPerUser);
-
-    for (var round = 0; round < MaxPicksPerUser; round++)
-    {
-        var roundOrder = string.Equals(normalizedMode, DraftOrderModes.Abba, StringComparison.OrdinalIgnoreCase) && round % 2 == 1
-            ? draftOrder.Reverse()
-            : draftOrder;
-        turns.AddRange(roundOrder);
-    }
-
-    return turns;
-}
-
-static IReadOnlyList<string> DraftTurns(DraftState draft) =>
-    draft.DraftTurnOrder is { Count: > 0 } ? draft.DraftTurnOrder : CreateDraftTurnOrder(draft.DraftOrder, DraftOrderModes.RoundRobin);
 
 static MatchResponse ToMatchResponse(CachedHomeMatch match) => new(
     match.Id,
@@ -1035,6 +1043,19 @@ static PlayerStatsPlayerResponse ToPlayerStatsPlayerResponse(WorldCupPlayerStats
     player.IsGoalkeeper,
     player.Categories.Select(ToPlayerStatCategoryResponse).ToArray());
 
+static ArchivedPlayerStatsPlayerResponse ToArchivedPlayerStats(PlayerStatsPlayerResponse player, IReadOnlyDictionary<string, string> draftedByPlayerName) => new(
+    player.Id,
+    player.OptaId,
+    player.Name,
+    player.TeamId,
+    player.TeamName,
+    player.ShirtNumber,
+    player.IsGoalkeeper,
+    player.Categories,
+    draftedByPlayerName.GetValueOrDefault(player.Name),
+    player.TeamName,
+    player.Categories.SelectMany(category => category.Stats).ToArray());
+
 static PlayerStatCategoryResponse ToPlayerStatCategoryResponse(WorldCupPlayerStatCategoryResponse category) => new(
     category.Key,
     category.Title,
@@ -1143,4 +1164,40 @@ static LeagueUser[] SeededUsers(bool includeTestUsers)
     }
 
     return users.ToArray();
+}
+
+class CompletedLiveMatchFinalizationHostedService(
+    IServiceProvider services,
+    Func<IServiceProvider, CancellationToken, Task> finalizeCompletedLiveMatches,
+    IConfiguration configuration,
+    ILogger<CompletedLiveMatchFinalizationHostedService> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(RefreshInterval(), stoppingToken);
+                await finalizeCompletedLiveMatches(services, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Completed live match finalization background job failed");
+            }
+        }
+    }
+
+    private TimeSpan RefreshInterval()
+    {
+        var seconds = int.TryParse(configuration["CompletedLiveMatches:FinalizationIntervalSeconds"], out var configuredSeconds)
+            ? configuredSeconds
+            : 30;
+
+        return TimeSpan.FromSeconds(Math.Clamp(seconds, 5, 3600));
+    }
 }

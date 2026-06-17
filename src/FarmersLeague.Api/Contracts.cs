@@ -14,6 +14,66 @@ static class DraftOrderModes
 static class DraftRules
 {
     public const int MaxPicksPerUser = 3;
+
+    public static DraftState Normalize(DraftState? draft)
+    {
+        if (draft is null)
+        {
+            return new DraftState(DraftStatuses.Open, [], [], null, []);
+        }
+
+        var draftOrder = draft.DraftOrder ?? [];
+        var rawJoinedUsers = draft.JoinedUsers ?? [];
+        var joinedUsers = rawJoinedUsers.Count > 0 ? rawJoinedUsers : draftOrder;
+        var status = string.IsNullOrWhiteSpace(draft.Status)
+            ? draftOrder.Count > 0 ? DraftStatuses.Started : DraftStatuses.Open
+            : draft.Status;
+
+        var draftTurnOrder = draft.DraftTurnOrder is { Count: > 0 }
+            ? draft.DraftTurnOrder
+            : CreateTurnOrder(draftOrder, DraftOrderModes.RoundRobin);
+
+        var normalized = draft with
+        {
+            Status = status,
+            JoinedUsers = joinedUsers,
+            DraftOrder = draftOrder,
+            DraftTurnOrder = draftTurnOrder,
+            Picks = draft.Picks ?? []
+        };
+
+        return IsComplete(normalized) ? normalized with { Status = DraftStatuses.Completed } : normalized;
+    }
+
+    public static bool IsComplete(DraftState draft)
+    {
+        var totalTurnCount = Turns(draft).Count;
+        return totalTurnCount > 0 && draft.Picks.Count >= totalTurnCount;
+    }
+
+    public static IReadOnlyList<string> CreateTurnOrder(IReadOnlyList<string> draftOrder, string? mode)
+    {
+        if (draftOrder.Count == 0)
+        {
+            return [];
+        }
+
+        var normalizedMode = string.IsNullOrWhiteSpace(mode) ? DraftOrderModes.RoundRobin : mode;
+        var turns = new List<string>(draftOrder.Count * MaxPicksPerUser);
+
+        for (var round = 0; round < MaxPicksPerUser; round++)
+        {
+            var roundOrder = string.Equals(normalizedMode, DraftOrderModes.Abba, StringComparison.OrdinalIgnoreCase) && round % 2 == 1
+                ? draftOrder.Reverse()
+                : draftOrder;
+            turns.AddRange(roundOrder);
+        }
+
+        return turns;
+    }
+
+    public static IReadOnlyList<string> Turns(DraftState draft) =>
+        draft.DraftTurnOrder is { Count: > 0 } ? draft.DraftTurnOrder : CreateTurnOrder(draft.DraftOrder, DraftOrderModes.RoundRobin);
 }
 
 record HelloResponse(string Message);

@@ -58,7 +58,7 @@ static class HomeMatchesCache
         var matches = await Get(cache, cancellationToken);
         var draft = matches.FirstOrDefault(match => match.Id == matchId)?.Draft;
 
-        return draft is null ? null : NormalizeDraft(draft);
+        return draft is null ? null : DraftRules.Normalize(draft);
     }
 
     public static async Task SaveDraft(IDistributedCache cache, int matchId, DraftState draft, CancellationToken cancellationToken)
@@ -75,7 +75,7 @@ static class HomeMatchesCache
     {
         var matches = await Get(cache, cancellationToken);
         var updatedMatches = matches
-            .Select(match => match.Id == matchId ? match with { Draft = draft is null ? null : NormalizeDraft(draft) } : match)
+            .Select(match => match.Id == matchId ? match with { Draft = draft is null ? null : DraftRules.Normalize(draft) } : match)
             .ToArray();
 
         await Save(cache, updatedMatches, cancellationToken);
@@ -103,58 +103,4 @@ static class HomeMatchesCache
             null);
     }
 
-    private static DraftState NormalizeDraft(DraftState draft)
-    {
-        var draftOrder = draft.DraftOrder ?? [];
-        var rawJoinedUsers = draft.JoinedUsers ?? [];
-        var joinedUsers = rawJoinedUsers.Count > 0 ? rawJoinedUsers : draftOrder;
-        var status = string.IsNullOrWhiteSpace(draft.Status)
-            ? draftOrder.Count > 0 ? DraftStatuses.Started : DraftStatuses.Open
-            : draft.Status;
-
-        var draftTurnOrder = draft.DraftTurnOrder is { Count: > 0 }
-            ? draft.DraftTurnOrder
-            : CreateDraftTurnOrder(draftOrder, DraftOrderModes.RoundRobin);
-
-        var normalized = draft with
-        {
-            Status = status,
-            JoinedUsers = joinedUsers,
-            DraftOrder = draftOrder,
-            DraftTurnOrder = draftTurnOrder,
-            Picks = draft.Picks ?? []
-        };
-
-        return IsDraftComplete(normalized) ? normalized with { Status = DraftStatuses.Completed } : normalized;
-    }
-
-    private static bool IsDraftComplete(DraftState draft)
-    {
-        var totalTurnCount = DraftTurns(draft).Count;
-        return totalTurnCount > 0 && draft.Picks.Count >= totalTurnCount;
-    }
-
-    private static IReadOnlyList<string> CreateDraftTurnOrder(IReadOnlyList<string> draftOrder, string? mode)
-    {
-        if (draftOrder.Count == 0)
-        {
-            return [];
-        }
-
-        var normalizedMode = string.IsNullOrWhiteSpace(mode) ? DraftOrderModes.RoundRobin : mode;
-        var turns = new List<string>(draftOrder.Count * DraftRules.MaxPicksPerUser);
-
-        for (var round = 0; round < DraftRules.MaxPicksPerUser; round++)
-        {
-            var roundOrder = string.Equals(normalizedMode, DraftOrderModes.Abba, StringComparison.OrdinalIgnoreCase) && round % 2 == 1
-                ? draftOrder.Reverse()
-                : draftOrder;
-            turns.AddRange(roundOrder);
-        }
-
-        return turns;
-    }
-
-    private static IReadOnlyList<string> DraftTurns(DraftState draft) =>
-        draft.DraftTurnOrder is { Count: > 0 } ? draft.DraftTurnOrder : CreateDraftTurnOrder(draft.DraftOrder, DraftOrderModes.RoundRobin);
 }

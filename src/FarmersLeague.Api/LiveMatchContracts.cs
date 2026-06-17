@@ -17,9 +17,22 @@ record CompletedLiveMatchResult(
     IReadOnlyList<string> Winners,
     IReadOnlyList<LiveSquadFinalScoreResponse> Squads,
     IReadOnlyList<PlayerStatsPlayerResponse> DraftedPlayerStats,
-    IReadOnlyList<PlayerStatsPlayerResponse> AllPlayerStats,
+    IReadOnlyList<ArchivedPlayerStatsPlayerResponse> AllPlayerStats,
     IReadOnlyDictionary<string, int> PointsConfig,
     DateTimeOffset FinalizedAt);
+
+record ArchivedPlayerStatsPlayerResponse(
+    string Id,
+    string? OptaId,
+    string Name,
+    string TeamId,
+    string TeamName,
+    string? ShirtNumber,
+    bool IsGoalkeeper,
+    IReadOnlyList<PlayerStatCategoryResponse> Categories,
+    string? DraftedBy,
+    string Team,
+    IReadOnlyList<PlayerStatResponse> Stats);
 
 record PlayerStatsRequest(IReadOnlyList<string> Players);
 
