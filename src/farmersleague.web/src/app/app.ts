@@ -6,6 +6,7 @@ import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, Dra
 
 const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
 const defaultMatchFeedTab: MatchFeedTab = 'today';
+const liveMatchWarmupStorageKeyPrefix = 'farmersleague:live-match-warmup:';
 
 type LivePointChange = {
   id: number;
@@ -193,6 +194,7 @@ export class App {
   }
 
   private openLiveMatch(matchId: number) {
+    window.sessionStorage.setItem(`${liveMatchWarmupStorageKeyPrefix}${matchId}`, 'true');
     window.location.href = `/${this.passkey()}/matches/${matchId}/live`;
   }
 
@@ -673,7 +675,10 @@ export class App {
     this.http.get<LiveMatchResponse>(`/api/matches/${matchId}/live?passkey=${encodeURIComponent(this.passkey())}`).subscribe({
       next: (response) => {
         this.applyLiveMatchUpdate(response);
-        this.connectLiveMatchUpdates(matchId);
+        const warmupStorageKey = `${liveMatchWarmupStorageKeyPrefix}${matchId}`;
+        const shouldDelayConnection = window.sessionStorage.getItem(warmupStorageKey) === 'true';
+        window.sessionStorage.removeItem(warmupStorageKey);
+        window.setTimeout(() => this.connectLiveMatchUpdates(matchId), shouldDelayConnection ? 20000 : 0);
       },
       error: (error) => {
         const response = error.error as DraftPickErrorResponse | undefined;

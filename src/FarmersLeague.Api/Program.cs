@@ -30,6 +30,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.InstanceName = "FarmersLeague:";
 });
 builder.Services.AddSingleton<LiveDraftConnections>();
+builder.Services.AddSingleton<LiveMatchTrackers>();
 
 var app = builder.Build();
 
@@ -288,7 +289,7 @@ app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext con
     return Results.Empty;
 });
 
-app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, ILogger<Program> logger, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, LiveMatchTrackers liveMatchTrackers, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
     var draftContext = await GetDraftContext(request.Passkey, matchId, scraper, cache, logger, false, cancellationToken);
     if (draftContext.Error is not null)
@@ -345,13 +346,17 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     }
 
     var updatedResponse = await SaveAndBroadcastDraft(matchId, match, updatedDraft, cache, liveDraftConnections, cancellationToken);
+    if (IsDraftComplete(updatedDraft))
+    {
+        StartLiveMatchTracker(matchId, ToLiveMatchResponse(updatedResponse.Match, updatedDraft, null), scraper, cache, liveMatchTrackers, logger);
+    }
 
     return Results.Ok(updatedResponse);
 });
 
-app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey, IWorldCupScraper scraper, IDistributedCache cache, ILogger<Program> logger, CancellationToken cancellationToken) =>
+app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey, IWorldCupScraper scraper, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
-    var liveMatch = await GetLiveMatch(passkey, matchId, scraper, cache, logger, cancellationToken);
+    var liveMatch = await GetInitialLiveMatch(passkey, matchId, scraper, cache, liveMatchTrackers, logger, cancellationToken);
     if (liveMatch.Error is not null)
     {
         return liveMatch.Error;
@@ -360,7 +365,7 @@ app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey
     return Results.Ok(liveMatch.LiveMatch);
 });
 
-app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpContext context, IWorldCupScraper scraper, IDistributedCache cache, ILogger<Program> logger, CancellationToken cancellationToken) =>
+app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpContext context, IWorldCupScraper scraper, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, ILogger<Program> logger, CancellationToken cancellationToken) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
     {
@@ -368,33 +373,26 @@ app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpCo
     }
 
     var passkey = context.Request.Query["passkey"].ToString();
-    var initialLiveMatch = await GetLiveMatch(passkey, matchId, scraper, cache, logger, cancellationToken);
+    var initialLiveMatch = await GetInitialLiveMatch(passkey, matchId, scraper, cache, liveMatchTrackers, logger, cancellationToken);
     if (initialLiveMatch.Error is not null)
     {
         return initialLiveMatch.Error;
     }
 
     using var socket = await context.WebSockets.AcceptWebSocketAsync();
-    var lastPayload = string.Empty;
+    await liveMatchTrackers.Subscribe(matchId, socket, cancellationToken);
 
     while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
     {
-        var liveMatch = await GetLiveMatch(passkey, matchId, scraper, cache, logger, cancellationToken);
-        if (liveMatch.Error is not null)
+        var buffer = new byte[1024];
+        var message = await socket.ReceiveAsync(buffer, cancellationToken);
+        if (message.MessageType == WebSocketMessageType.Close)
         {
             break;
         }
-
-        var payload = JsonSerializer.Serialize(liveMatch.LiveMatch, AppJson.Options);
-        if (!string.Equals(payload, lastPayload, StringComparison.Ordinal))
-        {
-            var bytes = Encoding.UTF8.GetBytes(payload);
-            await socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken);
-            lastPayload = payload;
-        }
-
-        await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
     }
+
+    liveMatchTrackers.Unsubscribe(matchId, socket);
 
     return Results.Empty;
 });
@@ -406,16 +404,18 @@ app.MapGet("/api/matches", async (IWorldCupScraper scraper, IDistributedCache ca
     return Results.Ok(matches.Select(ToCachedHomeMatchResponse).ToArray());
 });
 
-app.MapDelete("/api/testing/drafts", async (IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapDelete("/api/testing/drafts", async (IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, CancellationToken cancellationToken) =>
 {
     await RemoveDraft(1001, cache, cancellationToken);
+    liveMatchTrackers.Remove(1001);
 
     return Results.NoContent();
 });
 
-app.MapDelete("/api/testing/drafts/{matchId:int}", async (int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapDelete("/api/testing/drafts/{matchId:int}", async (int matchId, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, CancellationToken cancellationToken) =>
 {
     await RemoveDraft(matchId, cache, cancellationToken);
+    liveMatchTrackers.Remove(matchId);
 
     return Results.NoContent();
 });
@@ -447,23 +447,26 @@ app.MapGet("/api/testing/live-matches/{matchId:int}/completed", async (int match
     return completed is null ? Results.NotFound() : Results.Ok(completed);
 });
 
-app.MapPut("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, CompletedLiveMatchResult completed, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapPut("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, CompletedLiveMatchResult completed, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, CancellationToken cancellationToken) =>
 {
     await SaveCompletedLiveMatch(matchId, completed, cache, cancellationToken);
+    liveMatchTrackers.Remove(matchId);
 
     return Results.NoContent();
 });
 
-app.MapDelete("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapDelete("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, CancellationToken cancellationToken) =>
 {
     await cache.RemoveAsync(CompletedLiveMatchCacheKey(matchId), cancellationToken);
+    liveMatchTrackers.Remove(matchId);
 
     return Results.NoContent();
 });
 
-app.MapPut("/api/testing/drafts/{matchId:int}", async (int matchId, DraftState draft, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapPut("/api/testing/drafts/{matchId:int}", async (int matchId, DraftState draft, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, CancellationToken cancellationToken) =>
 {
     await SaveDraft(matchId, NormalizeDraft(draft), cache, cancellationToken);
+    liveMatchTrackers.Remove(matchId);
 
     return Results.NoContent();
 });
@@ -585,7 +588,7 @@ static async Task<CompletedLiveMatchResult?> GetCompletedLiveMatch(int matchId, 
 static Task SaveCompletedLiveMatch(int matchId, CompletedLiveMatchResult completed, IDistributedCache cache, CancellationToken cancellationToken) =>
     cache.SetStringAsync(CompletedLiveMatchCacheKey(matchId), JsonSerializer.Serialize(completed, AppJson.Options), cancellationToken);
 
-static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, IWorldCupScraper scraper, IDistributedCache cache, ILogger logger, CancellationToken cancellationToken)
+static async Task<LiveMatchResult> GetInitialLiveMatch(string passkey, int matchId, IWorldCupScraper scraper, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, ILogger logger, CancellationToken cancellationToken)
 {
     var draftContext = await GetDraftContext(passkey, matchId, scraper, cache, logger, false, cancellationToken);
     if (draftContext.Error is not null)
@@ -597,6 +600,11 @@ static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, IWo
     if (draft is null || !IsDraftComplete(draft))
     {
         return new LiveMatchResult(null, Results.BadRequest(new DraftPickErrorResponse("Match has not started yet")));
+    }
+
+    if (liveMatchTrackers.TryGetCurrent(matchId, out var current))
+    {
+        return new LiveMatchResult(current, null);
     }
 
     var match = draftContext.Match!;
@@ -613,9 +621,51 @@ static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, IWo
         return new LiveMatchResult(ToCompletedLiveMatchResponse(match, draft, completed), null);
     }
 
+    var initialState = ToLiveMatchResponse(match, draft, null);
+    StartLiveMatchTracker(matchId, initialState, scraper, cache, liveMatchTrackers, logger);
+
+    return new LiveMatchResult(initialState, null);
+}
+
+static void StartLiveMatchTracker(int matchId, LiveMatchResponse initialState, IWorldCupScraper scraper, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, ILogger logger)
+{
+    liveMatchTrackers.Start(
+        matchId,
+        initialState,
+        cancellationToken => GetTrackableLiveMatch(matchId, scraper, cache, logger, cancellationToken),
+        logger);
+}
+
+static async Task<LiveMatchResponse?> GetTrackableLiveMatch(int matchId, IWorldCupScraper scraper, IDistributedCache cache, ILogger logger, CancellationToken cancellationToken)
+{
+    var draft = await GetDraft(matchId, cache, cancellationToken);
+    if (draft is null || !IsDraftComplete(draft))
+    {
+        return null;
+    }
+
+    var match = await GetMatch(matchId, draft, false, false, scraper, cache, logger, cancellationToken);
+    if (match is null)
+    {
+        return null;
+    }
+
+    var completed = await GetCompletedLiveMatch(matchId, cache, cancellationToken);
+    if (completed is not null)
+    {
+        return ToCompletedLiveMatchResponse(match, draft, completed);
+    }
+
+    if (match.HasFinished)
+    {
+        completed = await FinalizeCompletedLiveMatch(match, draft, scraper, cache, cancellationToken);
+
+        return ToCompletedLiveMatchResponse(match, draft, completed);
+    }
+
     var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), scraper, cancellationToken);
 
-    return new LiveMatchResult(ToLiveMatchResponse(match, draft, stats), null);
+    return ToLiveMatchResponse(match, draft, stats);
 }
 
 static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResponse match, DraftState draft, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
