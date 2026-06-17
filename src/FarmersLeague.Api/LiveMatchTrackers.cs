@@ -54,6 +54,8 @@ class LiveMatchTrackers
 
 class LiveMatchTracker
 {
+    private const string LiveMatchUpdateType = "liveMatchUpdate";
+    private const string LiveMatchHeartbeatType = "liveMatchHeartbeat";
     private readonly int matchId;
     private readonly Func<CancellationToken, Task<LiveMatchResponse?>> refresh;
     private readonly ILogger logger;
@@ -120,7 +122,7 @@ class LiveMatchTracker
                         current = next;
                     }
 
-                    await Broadcast(stop.Token);
+                    await Broadcast(sendHeartbeatWhenUnchanged: true, stop.Token);
                     if (next.FinalResult is not null)
                     {
                         stop.Cancel();
@@ -149,15 +151,15 @@ class LiveMatchTracker
         }
     }
 
-    private async Task Broadcast(CancellationToken cancellationToken)
+    private async Task Broadcast(bool sendHeartbeatWhenUnchanged, CancellationToken cancellationToken)
     {
         foreach (var socket in sockets.Keys)
         {
-            await SendCurrent(socket, cancellationToken);
+            await SendCurrent(socket, cancellationToken, sendHeartbeatWhenUnchanged);
         }
     }
 
-    private async Task SendCurrent(WebSocket socket, CancellationToken cancellationToken)
+    private async Task SendCurrent(WebSocket socket, CancellationToken cancellationToken, bool sendHeartbeatWhenUnchanged = false)
     {
         if (socket.State != WebSocketState.Open)
         {
@@ -165,21 +167,40 @@ class LiveMatchTracker
             return;
         }
 
-        var payload = JsonSerializer.Serialize(Current, AppJson.Options);
+        var current = Current;
+        var payload = JsonSerializer.Serialize(current, AppJson.Options);
         if (sockets.TryGetValue(socket, out var lastPayload) && string.Equals(payload, lastPayload, StringComparison.Ordinal))
         {
+            if (sendHeartbeatWhenUnchanged)
+            {
+                try
+                {
+                    await Send(socket, JsonSerializer.Serialize(new LiveMatchHeartbeatMessage(LiveMatchHeartbeatType), AppJson.Options), cancellationToken);
+                }
+                catch (WebSocketException)
+                {
+                    Unsubscribe(socket);
+                }
+            }
+
             return;
         }
 
+        var message = new LiveMatchUpdateMessage(LiveMatchUpdateType, current.Match, current.Squads, current.FinalResult);
         try
         {
-            var bytes = Encoding.UTF8.GetBytes(payload);
-            await socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken);
+            await Send(socket, JsonSerializer.Serialize(message, AppJson.Options), cancellationToken);
             sockets[socket] = payload;
         }
         catch (WebSocketException)
         {
             Unsubscribe(socket);
         }
+    }
+
+    private async Task Send(WebSocket socket, string message, CancellationToken cancellationToken)
+    {
+        var bytes = Encoding.UTF8.GetBytes(message);
+        await socket.SendAsync(bytes, WebSocketMessageType.Text, true, cancellationToken);
     }
 }

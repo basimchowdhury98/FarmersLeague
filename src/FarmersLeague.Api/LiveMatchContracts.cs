@@ -1,5 +1,9 @@
 record LiveMatchResponse(MatchResponse Match, IReadOnlyList<LiveSquadResponse> Squads, LiveMatchFinalResultResponse? FinalResult = null);
 
+record LiveMatchUpdateMessage(string Type, MatchResponse Match, IReadOnlyList<LiveSquadResponse> Squads, LiveMatchFinalResultResponse? FinalResult = null);
+
+record LiveMatchHeartbeatMessage(string Type);
+
 record LiveSquadResponse(string UserName, IReadOnlyList<LivePlayerResponse> Players);
 
 record LivePlayerResponse(string Name, string? TeamName, IReadOnlyList<PlayerStatCategoryResponse> Categories);

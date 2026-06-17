@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
 import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
 import { livePlayerPoints, liveStatPoints, scoringLivePlayerCategories } from './live-scoring';
-import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
+import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchLiveMessage, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
 
 const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
 const defaultMatchFeedTab: MatchFeedTab = 'today';
@@ -45,6 +45,7 @@ export class App {
   protected readonly liveMatch = signal<LiveMatchResponse | null>(null);
   protected readonly liveMatchUnavailable = signal('');
   protected readonly liveMatchLiveError = signal('');
+  protected readonly liveFeedPulseActive = signal(false);
   protected readonly selectedLivePlayer = signal<LivePlayer | null>(null);
   protected readonly livePointChanges = signal<LivePointChange[]>([]);
   protected readonly draftError = signal('');
@@ -66,6 +67,7 @@ export class App {
   private activeDraftPickFlightKey = '';
   private draftPickFlightTimeout: number | null = null;
   private draftedHighlightTimeout: number | null = null;
+  private liveFeedPulseTimeout: number | null = null;
   private livePointChangeTimeouts = new Map<number, number>();
 
   constructor(private readonly http: HttpClient) {
@@ -668,6 +670,7 @@ export class App {
   private loadLiveMatch(matchId: number) {
     this.draftSocket?.close();
     this.liveMatch.set(null);
+    this.liveFeedPulseActive.set(false);
     this.clearLivePointChanges();
     this.liveMatchUnavailable.set('');
     this.liveMatchLiveError.set('');
@@ -696,7 +699,7 @@ export class App {
     this.liveMatchSocket = socket;
 
     socket.addEventListener('message', (event) => {
-      this.applyLiveMatchUpdate(JSON.parse(event.data) as LiveMatchResponse);
+      this.applyLiveMatchLiveMessage(JSON.parse(event.data) as LiveMatchLiveMessage);
     });
 
     socket.addEventListener('error', () => {
@@ -716,6 +719,33 @@ export class App {
     if (selectedPlayerName) {
       this.selectedLivePlayer.set(this.livePlayerByName(selectedPlayerName));
     }
+  }
+
+  private applyLiveMatchLiveMessage(message: LiveMatchLiveMessage) {
+    this.pulseLiveFeed();
+
+    if (message.type === 'liveMatchHeartbeat') {
+      return;
+    }
+
+    const { type: _type, ...response } = message;
+    this.applyLiveMatchUpdate(response);
+  }
+
+  private pulseLiveFeed() {
+    if (this.liveFeedPulseTimeout !== null) {
+      window.clearTimeout(this.liveFeedPulseTimeout);
+      this.liveFeedPulseTimeout = null;
+    }
+
+    this.liveFeedPulseActive.set(false);
+    window.requestAnimationFrame(() => {
+      this.liveFeedPulseActive.set(true);
+      this.liveFeedPulseTimeout = window.setTimeout(() => {
+        this.liveFeedPulseActive.set(false);
+        this.liveFeedPulseTimeout = null;
+      }, 900);
+    });
   }
 
   private recordLivePointChanges(currentLiveMatch: LiveMatchResponse, nextLiveMatch: LiveMatchResponse) {

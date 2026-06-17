@@ -65,6 +65,16 @@ export type LiveMatchResponse = {
   finalResult: LiveMatchFinalResult | null;
 };
 
+export type LiveMatchLiveMessage = LiveMatchUpdateMessage | LiveMatchHeartbeatMessage;
+
+export type LiveMatchUpdateMessage = LiveMatchResponse & {
+  type: 'liveMatchUpdate';
+};
+
+export type LiveMatchHeartbeatMessage = {
+  type: 'liveMatchHeartbeat';
+};
+
 export type LiveMatchFinalResult = {
   winners: string[];
   squads: LiveSquadFinalScore[];

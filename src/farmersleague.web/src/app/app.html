@@ -114,6 +114,14 @@
             <p class="eyebrow">Live match stats</p>
             <h1 data-test="live-match-title">{{ liveState.match.homeTeam }} vs {{ liveState.match.awayTeam }} Live</h1>
             <p class="intro">Live stat updates for every drafted squad.</p>
+            <div class="eyebrow" data-test="live-feed-indicator" aria-live="polite" style="display: inline-flex; align-items: center; gap: 0.45rem;">
+              <span
+                aria-hidden="true"
+                style="width: 0.55rem; height: 0.55rem; border-radius: 999px; background: #b8e986; transition: transform 160ms ease;"
+                [style.transform]="liveFeedPulseActive() ? 'translateY(-1px) scale(1.22)' : 'translateY(0) scale(1)'"
+              ></span>
+              <span>Live feed</span>
+            </div>
             @if (liveMatchLiveError()) {
               <p class="draft-error" data-test="live-match-live-error">{{ liveMatchLiveError() }}</p>
             }
