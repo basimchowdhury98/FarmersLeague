@@ -11,6 +11,11 @@ static class DraftOrderModes
     public const string Abba = "abba";
 }
 
+static class DraftRules
+{
+    public const int MaxPicksPerUser = 3;
+}
+
 record HelloResponse(string Message);
 
 record AccessResponse(bool HasAccess, string? UserName, bool IsAdmin);
@@ -46,6 +51,8 @@ record DraftResponse(MatchResponse Match, string Status, IReadOnlyList<string> J
 record MatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups, bool HasStarted, bool HasFinished, string? Score = null);
 
 record HomeMatchResponse(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, IReadOnlyList<LineupResponse> Lineups, DraftResponse? Draft, bool HasStarted, bool HasFinished, string? Score = null);
+
+record CachedHomeMatch(int Id, string HomeTeam, string AwayTeam, string League, DateTimeOffset Date, bool HasStarted, bool HasFinished, string? Score, DraftState? Draft);
 
 record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterResponse> Starters, IReadOnlyList<StarterResponse> Bench);
 

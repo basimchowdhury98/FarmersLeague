@@ -6,7 +6,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
 
 var builder = WebApplication.CreateBuilder(args);
-const int MaxPicksPerUser = 3;
+const int MaxPicksPerUser = DraftRules.MaxPicksPerUser;
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -22,8 +22,7 @@ builder.Services.AddHttpClient("FotMob", client =>
     client.DefaultRequestHeaders.AcceptLanguage.ParseAdd("en-US,en;q=0.9");
 });
 builder.Services.AddSingleton<IWorldCupScraper, FotMobWorldCupScraper>();
-builder.Services.AddSingleton<WorldCupGamesCache>();
-builder.Services.AddHostedService<WorldCupGamesCacheHydrationService>();
+builder.Services.AddHostedService<HomeMatchesCacheHydrationService>();
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
@@ -51,9 +50,9 @@ app.MapGet("/api/access/{passkey}", async (string passkey, IDistributedCache cac
         : Results.Ok(new AccessResponse(true, user.Name, user.IsAdmin));
 });
 
-app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var match = await GetMatch(matchId, gamesCache, scraper, cancellationToken);
+    var match = await GetMatch(matchId, scraper, cache, cancellationToken);
     if (match is null)
     {
         return Results.NotFound();
@@ -85,9 +84,9 @@ app.MapGet("/api/drafts/{matchId:int}", async (int matchId, string? passkey, Wor
     return Results.Ok(ToDraftResponse(match, draft));
 });
 
-app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftAccessRequest request, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftAccessRequest request, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetDraftContext(request.Passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var draftContext = await GetDraftContext(request.Passkey, matchId, scraper, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -109,9 +108,9 @@ app.MapPost("/api/drafts/{matchId:int}", async (int matchId, DraftAccessRequest 
     return Results.Ok(response);
 });
 
-app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftAccessRequest request, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftAccessRequest request, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var draftContext = await GetUpcomingDraftContext(request.Passkey, matchId, scraper, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -138,9 +137,9 @@ app.MapPost("/api/drafts/{matchId:int}/join", async (int matchId, DraftAccessReq
     return Results.Ok(response);
 });
 
-app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftStartRequest request, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftStartRequest request, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetDraftContext(request.Passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var draftContext = await GetDraftContext(request.Passkey, matchId, scraper, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -195,9 +194,9 @@ app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftStartReq
     return Results.Ok(response);
 });
 
-app.MapDelete("/api/drafts/{matchId:int}", async (int matchId, string passkey, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapDelete("/api/drafts/{matchId:int}", async (int matchId, string passkey, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetDraftContext(passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var draftContext = await GetDraftContext(passkey, matchId, scraper, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -214,13 +213,13 @@ app.MapDelete("/api/drafts/{matchId:int}", async (int matchId, string passkey, W
         return Results.BadRequest(new DraftPickErrorResponse("Draft complete"));
     }
 
-    await cache.RemoveAsync(DraftCacheKey(matchId), cancellationToken);
+    await RemoveDraft(matchId, cache, cancellationToken);
     await liveDraftConnections.Broadcast(matchId, ToDraftResponse(draftContext.Match!, NewOpenDraftState([draftContext.UserName!])), cancellationToken);
 
     return Results.NoContent();
 });
 
-app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext context, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext context, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
     {
@@ -230,7 +229,6 @@ app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext con
     var draftContext = await GetDraftContext(
         context.Request.Query["passkey"].ToString(),
         matchId,
-        gamesCache,
         scraper,
         cache,
         cancellationToken);
@@ -285,9 +283,9 @@ app.MapGet("/api/drafts/{matchId:int}/live", async (int matchId, HttpContext con
     return Results.Empty;
 });
 
-app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
+app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequest request, IWorldCupScraper scraper, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken) =>
 {
-    var draftContext = await GetDraftContext(request.Passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var draftContext = await GetDraftContext(request.Passkey, matchId, scraper, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext.Error;
@@ -335,7 +333,7 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
 
     if (IsDraftComplete(updatedDraft) && HasMatchStarted(match))
     {
-        await cache.RemoveAsync(DraftCacheKey(matchId), cancellationToken);
+        await RemoveDraft(matchId, cache, cancellationToken);
         await liveDraftConnections.Broadcast(matchId, ToDraftResponse(match, NewOpenDraftState([])), cancellationToken);
 
         return Results.BadRequest(new DraftPickErrorResponse("Live match cannot be created since the actual match has started"));
@@ -346,9 +344,9 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     return Results.Ok(updatedResponse);
 });
 
-app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var liveMatch = await GetLiveMatch(passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var liveMatch = await GetLiveMatch(passkey, matchId, scraper, cache, cancellationToken);
     if (liveMatch.Error is not null)
     {
         return liveMatch.Error;
@@ -357,7 +355,7 @@ app.MapGet("/api/matches/{matchId:int}/live", async (int matchId, string passkey
     return Results.Ok(liveMatch.LiveMatch);
 });
 
-app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpContext context, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpContext context, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     if (!context.WebSockets.IsWebSocketRequest)
     {
@@ -365,7 +363,7 @@ app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpCo
     }
 
     var passkey = context.Request.Query["passkey"].ToString();
-    var initialLiveMatch = await GetLiveMatch(passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var initialLiveMatch = await GetLiveMatch(passkey, matchId, scraper, cache, cancellationToken);
     if (initialLiveMatch.Error is not null)
     {
         return initialLiveMatch.Error;
@@ -376,7 +374,7 @@ app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpCo
 
     while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
     {
-        var liveMatch = await GetLiveMatch(passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+        var liveMatch = await GetLiveMatch(passkey, matchId, scraper, cache, cancellationToken);
         if (liveMatch.Error is not null)
         {
             break;
@@ -396,50 +394,43 @@ app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpCo
     return Results.Empty;
 });
 
-app.MapGet("/api/matches", async (WorldCupGamesCache gamesCache, IDistributedCache cache, CancellationToken cancellationToken) =>
+app.MapGet("/api/matches", async (IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    var matches = await GetMatches(gamesCache, null, includeLineups: false, cancellationToken);
-    var responses = new List<HomeMatchResponse>();
+    var matches = await HomeMatchesCache.GetOrHydrate(cache, scraper, cancellationToken);
 
-    foreach (var match in matches)
-    {
-        var draft = await GetDraft(match.Id, cache, cancellationToken);
-        responses.Add(ToHomeMatchResponse(match, draft));
-    }
-
-    return Results.Ok(responses);
+    return Results.Ok(matches.Select(ToCachedHomeMatchResponse).ToArray());
 });
 
 app.MapDelete("/api/testing/drafts", async (IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    await cache.RemoveAsync(DraftCacheKey(1001), cancellationToken);
+    await RemoveDraft(1001, cache, cancellationToken);
 
     return Results.NoContent();
 });
 
 app.MapDelete("/api/testing/drafts/{matchId:int}", async (int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
-    await cache.RemoveAsync(DraftCacheKey(matchId), cancellationToken);
+    await RemoveDraft(matchId, cache, cancellationToken);
 
     return Results.NoContent();
 });
 
-app.MapPost("/api/testing/world-cup-2026/games/reset", async (WorldCupGamesCache gamesCache, CancellationToken cancellationToken) =>
+app.MapPost("/api/testing/world-cup-2026/games/reset", async (IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     FotMobWorldCupScraper.ResetMockGameStatus();
-    await gamesCache.TryHydrate("testing reset", force: true, cancellationToken);
+    await HomeMatchesCache.Hydrate(cache, scraper, cancellationToken);
 
     return Results.NoContent();
 });
 
-app.MapPut("/api/testing/world-cup-2026/games/{gameId}/status", async (string gameId, TestingGameStatusRequest request, WorldCupGamesCache gamesCache, CancellationToken cancellationToken) =>
+app.MapPut("/api/testing/world-cup-2026/games/{gameId}/status", async (string gameId, TestingGameStatusRequest request, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     if (!FotMobWorldCupScraper.SetMockGameStatus(gameId, request.Started, request.Finished, request.Score))
     {
         return Results.NotFound(new { title = "Mock game not found" });
     }
 
-    await gamesCache.TryHydrate("testing status override", force: true, cancellationToken);
+    await HomeMatchesCache.Hydrate(cache, scraper, cancellationToken);
 
     return Results.NoContent();
 });
@@ -510,34 +501,7 @@ static async Task<LeagueUser?> GetUser(string passkey, IDistributedCache cache, 
 static IResult? RequireAdmin(DraftContextResult draftContext) =>
     draftContext.IsAdmin ? null : Results.StatusCode(StatusCodes.Status403Forbidden);
 
-static string DraftCacheKey(int matchId) => $"drafts:{matchId}";
-
 static string CompletedLiveMatchCacheKey(int matchId) => $"live-matches:{matchId}:completed";
-
-static async Task<IReadOnlyList<MatchResponse>> GetMatches(WorldCupGamesCache gamesCache, IWorldCupScraper? scraper, bool includeLineups, CancellationToken cancellationToken)
-{
-    return await GetScraperMatches(gamesCache, scraper, includeLineups, cancellationToken);
-}
-
-static async Task<IReadOnlyList<MatchResponse>> GetScraperMatches(WorldCupGamesCache gamesCache, IWorldCupScraper? scraper, bool includeLineups, CancellationToken cancellationToken)
-{
-    var games = await gamesCache.GetGames(cancellationToken);
-    var matches = new List<MatchResponse>();
-
-    foreach (var game in games)
-    {
-        var match = ToScraperMatchResponse(game);
-        if (match is null)
-        {
-            continue;
-        }
-
-        var lineups = includeLineups && scraper is not null ? await GetScraperLineups(scraper, game.Id, cancellationToken) : [];
-        matches.Add(match with { Lineups = lineups });
-    }
-
-    return matches.OrderBy(match => match.Date).ToArray();
-}
 
 static async Task<IReadOnlyList<LineupResponse>> GetScraperLineups(IWorldCupScraper scraper, string gameId, CancellationToken cancellationToken)
 {
@@ -569,9 +533,9 @@ static async Task<CompletedLiveMatchResult?> GetCompletedLiveMatch(int matchId, 
 static Task SaveCompletedLiveMatch(int matchId, CompletedLiveMatchResult completed, IDistributedCache cache, CancellationToken cancellationToken) =>
     cache.SetStringAsync(CompletedLiveMatchCacheKey(matchId), JsonSerializer.Serialize(completed, AppJson.Options), cancellationToken);
 
-static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
+static async Task<LiveMatchResult> GetLiveMatch(string passkey, int matchId, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
-    var draftContext = await GetDraftContext(passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var draftContext = await GetDraftContext(passkey, matchId, scraper, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return new LiveMatchResult(null, draftContext.Error);
@@ -640,14 +604,20 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
     return completed;
 }
 
-static async Task<MatchResponse?> GetMatch(int matchId, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, CancellationToken cancellationToken)
+static async Task<MatchResponse?> GetMatch(int matchId, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
-    var matches = await GetMatches(gamesCache, scraper, includeLineups: true, cancellationToken);
+    var cachedMatch = await HomeMatchesCache.GetMatch(cache, scraper, matchId, cancellationToken);
+    if (cachedMatch is null)
+    {
+        return null;
+    }
 
-    return matches.FirstOrDefault(match => match.Id == matchId);
+    var lineups = await GetScraperLineups(scraper, matchId.ToString(), cancellationToken);
+
+    return ToMatchResponse(cachedMatch) with { Lineups = lineups };
 }
 
-static async Task<DraftContextResult> GetDraftContext(string passkey, int matchId, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
+static async Task<DraftContextResult> GetDraftContext(string passkey, int matchId, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
     var user = await GetUser(passkey, cache, cancellationToken);
     if (user is null)
@@ -655,7 +625,7 @@ static async Task<DraftContextResult> GetDraftContext(string passkey, int matchI
         return new DraftContextResult(null, false, null, Results.NotFound(new DraftPickErrorResponse("No access")));
     }
 
-    var match = await GetMatch(matchId, gamesCache, scraper, cancellationToken);
+    var match = await GetMatch(matchId, scraper, cache, cancellationToken);
     if (match is null)
     {
         return new DraftContextResult(user.Name, user.IsAdmin, null, Results.NotFound(new DraftPickErrorResponse("Match not found")));
@@ -664,9 +634,9 @@ static async Task<DraftContextResult> GetDraftContext(string passkey, int matchI
     return new DraftContextResult(user.Name, user.IsAdmin, match, null);
 }
 
-static async Task<DraftContextResult> GetUpcomingDraftContext(string passkey, int matchId, WorldCupGamesCache gamesCache, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
+static async Task<DraftContextResult> GetUpcomingDraftContext(string passkey, int matchId, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
-    var draftContext = await GetDraftContext(passkey, matchId, gamesCache, scraper, cache, cancellationToken);
+    var draftContext = await GetDraftContext(passkey, matchId, scraper, cache, cancellationToken);
     if (draftContext.Error is not null)
     {
         return draftContext;
@@ -679,8 +649,7 @@ static async Task<DraftContextResult> GetUpcomingDraftContext(string passkey, in
 
 static async Task<DraftState?> GetDraft(int matchId, IDistributedCache cache, CancellationToken cancellationToken)
 {
-    var cachedDraft = await cache.GetStringAsync(DraftCacheKey(matchId), cancellationToken);
-    return cachedDraft is null ? null : NormalizeDraft(JsonSerializer.Deserialize<DraftState>(cachedDraft, AppJson.Options));
+    return await HomeMatchesCache.GetDraft(cache, matchId, cancellationToken);
 }
 
 static DraftState NewOpenDraftState(IReadOnlyList<string> joinedUsers) => new(DraftStatuses.Open, joinedUsers, [], null, []);
@@ -716,7 +685,10 @@ static DraftState NormalizeDraft(DraftState? draft)
 }
 
 static Task SaveDraft(int matchId, DraftState draft, IDistributedCache cache, CancellationToken cancellationToken) =>
-    cache.SetStringAsync(DraftCacheKey(matchId), JsonSerializer.Serialize(draft, AppJson.Options), cancellationToken);
+    HomeMatchesCache.SaveDraft(cache, matchId, draft, cancellationToken);
+
+static Task RemoveDraft(int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
+    HomeMatchesCache.RemoveDraft(cache, matchId, cancellationToken);
 
 static async Task<DraftResponse> SaveAndBroadcastDraft(int matchId, MatchResponse match, DraftState draft, IDistributedCache cache, LiveDraftConnections liveDraftConnections, CancellationToken cancellationToken)
 {
@@ -806,24 +778,16 @@ static IReadOnlyList<string> CreateDraftTurnOrder(IReadOnlyList<string> draftOrd
 static IReadOnlyList<string> DraftTurns(DraftState draft) =>
     draft.DraftTurnOrder is { Count: > 0 } ? draft.DraftTurnOrder : CreateDraftTurnOrder(draft.DraftOrder, DraftOrderModes.RoundRobin);
 
-static MatchResponse? ToScraperMatchResponse(WorldCupGameResponse game)
-{
-    if (!int.TryParse(game.Id, out var matchId))
-    {
-        return null;
-    }
-
-    return new MatchResponse(
-        matchId,
-        game.HomeTeam.Name,
-        game.AwayTeam.Name,
-        "FIFA World Cup",
-        game.StartTimeUtc,
-        [],
-        game.Status.Started,
-        game.Status.Finished,
-        game.Status.Score);
-}
+static MatchResponse ToMatchResponse(CachedHomeMatch match) => new(
+    match.Id,
+    match.HomeTeam,
+    match.AwayTeam,
+    match.League,
+    match.Date,
+    [],
+    match.HasStarted,
+    match.HasFinished,
+    match.Score);
 
 static LineupResponse ToScraperLineupResponse(WorldCupLineupTeamResponse lineup) => new(
     lineup.Name,
@@ -891,17 +855,22 @@ static (int? Row, int? Column) ParseGrid(string? grid)
         : (null, null);
 }
 
-static HomeMatchResponse ToHomeMatchResponse(MatchResponse match, DraftState? draft) => new(
-    match.Id,
-    match.HomeTeam,
-    match.AwayTeam,
-    match.League,
-    match.Date,
-    match.Lineups,
-    draft is null ? null : ToDraftResponse(match, draft),
-    match.HasStarted,
-    match.HasFinished,
-    match.Score);
+static HomeMatchResponse ToCachedHomeMatchResponse(CachedHomeMatch match)
+{
+    var matchResponse = ToMatchResponse(match);
+
+    return new HomeMatchResponse(
+        match.Id,
+        match.HomeTeam,
+        match.AwayTeam,
+        match.League,
+        match.Date,
+        [],
+        match.Draft is null ? null : ToDraftResponse(matchResponse, match.Draft),
+        match.HasStarted,
+        match.HasFinished,
+        match.Score);
+}
 
 static PlayerStatsResponse ToPlayerStatsResponse(WorldCupPlayerStatsResponse stats) => new(
     stats.GameId,
