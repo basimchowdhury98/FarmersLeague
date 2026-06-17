@@ -187,30 +187,57 @@ export class App {
     return 'No upcoming matches.';
   }
 
-  protected openDraft(match: MatchResponse) {
+  protected openMatch(match: MatchResponse) {
+    if (this.hasMatchStarted(match) && !this.hasMatchFinished(match)) {
+      this.switchToLiveMatch(match.id);
+      return;
+    }
+
     if (!this.canOpenDraft(match)) {
       return;
     }
 
-    window.location.href = `/${this.passkey()}/matches/${match.id}/draft`;
+    this.openDraft(match);
   }
 
-  private openLiveMatch(matchId: number) {
+  private openDraft(match: MatchResponse) {
+    window.location.href = this.draftPath(match.id);
+  }
+
+  private openLiveMatchWithWarmup(matchId: number) {
     window.sessionStorage.setItem(`${liveMatchWarmupStorageKeyPrefix}${matchId}`, 'true');
-    window.location.href = `/${this.passkey()}/matches/${matchId}/live`;
+    window.location.href = this.livePath(matchId);
+  }
+
+  private switchToLiveMatch(matchId: number) {
+    window.history.pushState({}, '', this.livePath(matchId));
+    this.route.set('live');
+    this.loadLiveMatch(matchId);
+  }
+
+  private homePath() {
+    return `/${this.passkey()}`;
+  }
+
+  private draftPath(matchId: number) {
+    return `${this.homePath()}/matches/${matchId}/draft`;
+  }
+
+  private livePath(matchId: number) {
+    return `${this.homePath()}/matches/${matchId}/live`;
   }
 
   protected createDraft(match: MatchResponse, event?: Event) {
     event?.stopPropagation();
     this.http.post<DraftResponse>(`/api/drafts/${match.id}`, { passkey: this.passkey() }).subscribe(() => {
-      this.openDraft(match);
+        this.openDraft(match);
     });
   }
 
   protected joinDraft(match: MatchResponse, event?: Event) {
     event?.stopPropagation();
     this.http.post<DraftResponse>(`/api/drafts/${match.id}/join`, { passkey: this.passkey() }).subscribe(() => {
-      this.openDraft(match);
+        this.openDraft(match);
     });
   }
 
@@ -663,7 +690,7 @@ export class App {
     this.liveMatch.set(null);
     this.homeError.set(message);
     this.route.set('home');
-    window.history.pushState({}, '', `/${this.passkey()}`);
+    window.history.pushState({}, '', this.homePath());
     this.loadHomePage();
   }
 
@@ -837,7 +864,7 @@ export class App {
     }
 
     if (!currentDraft.isComplete && response.isComplete) {
-      this.openLiveMatch(response.match.id);
+      this.openLiveMatchWithWarmup(response.match.id);
       return;
     }
 

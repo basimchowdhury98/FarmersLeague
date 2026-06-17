@@ -62,7 +62,7 @@
         }
 
         @for (match of visibleMatches(); track match.id) {
-          <article class="match" data-test="match-card" (click)="openDraft(match)">
+          <article class="match" data-test="match-card" (click)="openMatch(match)">
             <span class="league" data-test="match-league">{{ match.league }}</span>
             <span class="team-side team-side-home">
               <span class="team-badge">{{ teamInitials(match.homeTeam) }}</span>

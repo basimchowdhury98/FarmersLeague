@@ -52,6 +52,9 @@ describe('Live match drafted player stats', () => {
 
   const livePath = (passkey) => `/${passkey}/matches/${match.id}/live`;
   const draftPath = (passkey) => `/${passkey}/matches/${match.id}/draft`;
+  const liveApiPath = (passkey) => `/api/matches/${match.id}/live?passkey=${passkey}`;
+  const liveUpdatesPath = () => `/api/matches/${match.id}/live/updates`;
+  const matchCard = () => cy.contains('[data-test="match-card"]', matchLabel);
 
   const completedPicks = () => [
     { userName: 'Alice', playerName: homeStarters[0] },
@@ -68,6 +71,37 @@ describe('Live match drafted player stats', () => {
       joinedUsers: ['Alice', 'Bob'],
       draftOrder: ['Alice', 'Bob'],
       picks: completedPicks()
+    });
+  };
+
+  const watchWebSocketUrls = (win) => {
+    const OriginalWebSocket = win.WebSocket;
+    win.__webSocketUrls = [];
+
+    function RecordingWebSocket(url, protocols) {
+      win.__webSocketUrls.push(String(url));
+
+      if (protocols === undefined) {
+        return new OriginalWebSocket(url);
+      }
+
+      return new OriginalWebSocket(url, protocols);
+    }
+
+    RecordingWebSocket.prototype = OriginalWebSocket.prototype;
+    RecordingWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
+    RecordingWebSocket.OPEN = OriginalWebSocket.OPEN;
+    RecordingWebSocket.CLOSING = OriginalWebSocket.CLOSING;
+    RecordingWebSocket.CLOSED = OriginalWebSocket.CLOSED;
+    win.WebSocket = RecordingWebSocket;
+  };
+
+  const startDraftWithOnePickRemaining = () => {
+    setDraft({
+      status: 'started',
+      joinedUsers: ['Alice', 'Bob'],
+      draftOrder: ['Alice', 'Bob'],
+      picks: completedPicks().slice(0, 5)
     });
   };
 
@@ -125,12 +159,7 @@ describe('Live match drafted player stats', () => {
   // WHEN Bob makes the final pick
   // THEN Bob is automatically navigated to that match's live page
   it('automatically navigates the user who makes the final pick to the live page', () => {
-    setDraft({
-      status: 'started',
-      joinedUsers: ['Alice', 'Bob'],
-      draftOrder: ['Alice', 'Bob'],
-      picks: completedPicks().slice(0, 5)
-    });
+    startDraftWithOnePickRemaining();
 
     cy.visit(draftPath(bobPasskey));
     clickDraft(awayStarters[2]);
@@ -144,12 +173,7 @@ describe('Live match drafted player stats', () => {
   // WHEN Bob's final pick completes the draft from another session
   // THEN Alice is also automatically navigated to that match's live page
   it('automatically navigates other users watching the draft when the final pick completes it', () => {
-    setDraft({
-      status: 'started',
-      joinedUsers: ['Alice', 'Bob'],
-      draftOrder: ['Alice', 'Bob'],
-      picks: completedPicks().slice(0, 5)
-    });
+    startDraftWithOnePickRemaining();
 
     cy.visit(draftPath(alicePasskey));
     cy.testGet('draft-page').should('be.visible');
@@ -159,6 +183,37 @@ describe('Live match drafted player stats', () => {
     cy.location('pathname').should('equal', livePath(alicePasskey));
     cy.testGet('live-match-page').should('be.visible');
     cy.testGet('live-match-title').should('contain.text', matchLabel);
+  });
+
+  // GIVEN a match has a completed draft and the scraper says the match has started but not finished
+  // WHEN a logged-in user clicks that match card on the home page
+  // THEN they are navigated directly to that match's live page and see the live match content
+  it('opens the live match page when a user clicks an ongoing match from the home page', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: false });
+
+    cy.visit(`/${alicePasskey}`);
+    matchCard().click();
+
+    cy.location('pathname').should('equal', livePath(alicePasskey));
+    cy.testGet('live-match-page').should('be.visible');
+    cy.testGet('live-match-title').should('contain.text', matchLabel);
+  });
+
+  // GIVEN a user opens a live match page by clicking an ongoing match from the home page
+  // WHEN the live page loads
+  // THEN the page connects to the live updates WebSocket for that match
+  it('connects to the live match WebSocket after opening an ongoing match from the home page', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: false });
+
+    cy.visit(`/${alicePasskey}`, { onBeforeLoad: watchWebSocketUrls });
+    matchCard().click();
+
+    cy.location('pathname').should('equal', livePath(alicePasskey));
+    cy.window().its('__webSocketUrls').should((urls) => {
+      expect(urls.some((url) => url.includes(liveUpdatesPath())), 'live match websocket url').to.equal(true);
+    });
   });
 
   // GIVEN a draft is complete and Alice opens the live match page
@@ -265,6 +320,27 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-player-card').should('not.exist');
   });
 
+  // GIVEN a match is ongoing but its draft is not complete
+  // WHEN a logged-in user clicks that match card on the home page
+  // THEN they are not shown live match content and see the existing “Match has not started yet” unavailable state
+  it('shows the unavailable live state when an ongoing match is clicked before its draft is complete', () => {
+    setDraft({
+      status: 'started',
+      joinedUsers: ['Alice', 'Bob'],
+      draftOrder: ['Alice', 'Bob'],
+      picks: completedPicks().slice(0, 2)
+    });
+    setScraperMatchStatus({ started: true, finished: false });
+
+    cy.visit(`/${alicePasskey}`);
+    matchCard().click();
+
+    cy.location('pathname').should('equal', livePath(alicePasskey));
+    cy.testGet('live-match-unavailable').should('be.visible').and('contain.text', 'Match has not started yet');
+    cy.testGet('live-match-page').should('not.exist');
+    cy.testGet('live-player-card').should('not.exist');
+  });
+
   // GIVEN a draft is complete but a drafted player has no returned scraper stats yet
   // WHEN Alice opens the live match page
   // THEN that drafted player is still shown with a no-stats state instead of breaking the page
@@ -348,7 +424,7 @@ describe('Live match drafted player stats', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
 
-    cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`).its('status').should('equal', 200);
+    cy.request(liveApiPath(alicePasskey)).its('status').should('equal', 200);
 
     cachedCompletedLiveMatch().then(({ body }) => {
       expect(body.match.id).to.equal(match.id);
@@ -368,7 +444,7 @@ describe('Live match drafted player stats', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
 
-    cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`).then(({ body }) => {
+    cy.request(liveApiPath(alicePasskey)).then(({ body }) => {
       const frontendPlayerNames = body.squads.flatMap((squad) => squad.players.map((player) => player.name));
 
       expect(frontendPlayerNames).to.have.members(completedPicks().map((pick) => pick.playerName));
@@ -386,10 +462,10 @@ describe('Live match drafted player stats', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
 
-    cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`);
+    cy.request(liveApiPath(alicePasskey));
     cachedCompletedLiveMatch().then(({ body: firstCachedResult }) => {
-      cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`);
-      cy.request(`/api/matches/${match.id}/live?passkey=${alicePasskey}`);
+      cy.request(liveApiPath(alicePasskey));
+      cy.request(liveApiPath(alicePasskey));
 
       cachedCompletedLiveMatch().then(({ body: laterCachedResult }) => {
         expect(laterCachedResult.finalizedAt).to.equal(firstCachedResult.finalizedAt);
