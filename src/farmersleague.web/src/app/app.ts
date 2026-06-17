@@ -643,7 +643,11 @@ export class App {
 
   private loadDraft(matchId: number) {
     this.http.get<DraftResponse>(`/api/drafts/${matchId}?passkey=${encodeURIComponent(this.passkey())}`).subscribe((response) => {
+      this.draftError.set('');
       this.draft.set(response);
+      if (response.status !== 'open' && !this.hasConfirmedFullSquads(response.match)) {
+        this.draftError.set('Unable to load confirmed lineups for this started draft. Please try again.');
+      }
       this.connectDraftLiveUpdates(matchId);
     });
   }
@@ -766,7 +770,9 @@ export class App {
 
   private applyDraftLiveMessage(message: DraftLiveMessage) {
     if ('type' in message) {
-      if (message.type === 'draftOrderReveal') {
+      if (message.type === 'draftUpdate') {
+        this.applyDraftStateUpdate(message);
+      } else if (message.type === 'draftOrderReveal') {
         this.applyDraftOrderRevealMessage(message);
       } else if (message.type === 'draftOrderRevealComplete') {
         this.draftOrderReveal.set(null);
@@ -774,8 +780,18 @@ export class App {
 
       return;
     }
+  }
 
-    this.applyDraftUpdate(message);
+  private applyDraftStateUpdate(message: Extract<DraftLiveMessage, { type: 'draftUpdate' }>) {
+    const currentDraft = this.draft();
+    if (!currentDraft) {
+      return;
+    }
+
+    this.applyDraftUpdate({
+      ...message,
+      match: currentDraft.match
+    });
   }
 
   private applyDraftUpdate(response: DraftResponse) {

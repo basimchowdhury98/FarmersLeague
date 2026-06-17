@@ -42,6 +42,8 @@ record DraftOrderRevealMessage(string Type, int RevealedCount);
 
 record DraftOrderRevealCompleteMessage(string Type);
 
+record DraftUpdateMessage(string Type, string Status, IReadOnlyList<string> JoinedUsers, IReadOnlyList<string> DraftOrder, IReadOnlyList<string> DraftTurnOrder, IReadOnlyList<DraftPick> Picks, string? CurrentTurn, bool IsComplete);
+
 record DraftContextResult(string? UserName, bool IsAdmin, MatchResponse? Match, IResult? Error);
 
 record LiveMatchResult(LiveMatchResponse? LiveMatch, IResult? Error);

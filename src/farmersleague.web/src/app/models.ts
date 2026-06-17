@@ -124,7 +124,18 @@ export type DraftOrderRevealSlot = {
   isRevealed: boolean;
 };
 
-export type DraftLiveMessage = DraftResponse | DraftOrderRevealMessage | DraftOrderRevealCompleteMessage;
+export type DraftLiveMessage = DraftUpdateMessage | DraftOrderRevealMessage | DraftOrderRevealCompleteMessage;
+
+export type DraftUpdateMessage = {
+  type: 'draftUpdate';
+  status: 'open' | 'started' | 'completed';
+  joinedUsers: string[];
+  draftOrder: string[];
+  draftTurnOrder: string[];
+  picks: DraftPick[];
+  currentTurn: string | null;
+  isComplete: boolean;
+};
 
 export type DraftOrderRevealMessage = {
   type: 'draftOrderReveal';

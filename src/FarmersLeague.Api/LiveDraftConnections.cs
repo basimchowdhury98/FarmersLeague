@@ -21,7 +21,7 @@ class LiveDraftConnections
         }
     }
 
-    public async Task Broadcast(int matchId, DraftResponse draft, CancellationToken cancellationToken)
+    public async Task Broadcast(int matchId, DraftUpdateMessage draft, CancellationToken cancellationToken)
     {
         if (!socketsByMatch.TryGetValue(matchId, out var sockets))
         {
@@ -57,7 +57,7 @@ class LiveDraftConnections
         }
     }
 
-    public async Task Send(WebSocket socket, DraftResponse draft, CancellationToken cancellationToken)
+    public async Task Send(WebSocket socket, DraftUpdateMessage draft, CancellationToken cancellationToken)
     {
         if (socket.State != WebSocketState.Open)
         {
