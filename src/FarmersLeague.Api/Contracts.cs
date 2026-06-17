@@ -84,6 +84,8 @@ record LeagueUser(string Name, string Passkey, bool IsAdmin);
 
 record DraftState(string Status, IReadOnlyList<string> JoinedUsers, IReadOnlyList<string> DraftOrder, IReadOnlyList<string>? DraftTurnOrder, IReadOnlyList<DraftPick> Picks);
 
+record DraftViewState(DraftState Draft, string Status, string? CurrentTurn, bool IsComplete);
+
 record DraftPick(string UserName, string PlayerName);
 
 record DraftPickRequest(string Passkey, string PlayerName);

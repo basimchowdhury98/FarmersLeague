@@ -426,7 +426,7 @@ describe('Live match drafted player stats', () => {
 
   // GIVEN a draft is complete and the live match has started
   // WHEN the scraper marks the match finished and the background finalization job runs
-  // THEN Redis stores a completed match result containing match teams, final score, winners, squad totals, drafted ownership indicators, all player stats, and the scoring config snapshot
+  // THEN Redis stores a completed match result containing match teams, final score, winners, squad totals, drafted ownership indicators, all player stats, every player's calculated points, and the scoring config snapshot
   it('archives a finished drafted live match from the background job with all player stats and ownership indicators', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true, score: '2 - 1' });
@@ -446,15 +446,46 @@ describe('Live match drafted player stats', () => {
       expect(body.allPlayerStats.find((player) => player.name === homeStarters[0])).to.include({ draftedBy: 'Alice' });
       expect(body.allPlayerStats.find((player) => player.name === awayStarters[0])).to.include({ draftedBy: 'Bob' });
       expect(body.allPlayerStats.find((player) => player.name === homeBench[0])).to.include({ draftedBy: null });
+      expect(body.allPlayerStats.every((player) => typeof player.totalPoints === 'number'), 'all archived player point totals').to.equal(true);
+      expect(body.allPlayerStats.find((player) => player.name === homeBench[0]).totalPoints, 'undrafted player point total').to.be.at.least(0);
       expect(body.allPlayerStats.every((player) => player.team), 'all archived player teams').to.equal(true);
       expect(body.allPlayerStats.every((player) => player.stats), 'all archived player stats').to.equal(true);
       expect(body.pointsConfig, 'points config snapshot').to.include({ goals: 10, goals_prevented: 0 });
     });
   });
 
+  // GIVEN the completed match archive includes drafted and undrafted player stats
+  // WHEN the background finalization job stores the completed result in Redis
+  // THEN each archived all-player total is calculated with the same scoring config used for the final squad totals
+  it('stores calculated point totals for every archived player using the scoring config snapshot', () => {
+    completeDraft();
+    setScraperMatchStatus({ started: true, finished: true });
+
+    runCompletedLiveMatchFinalizer();
+
+    cachedCompletedLiveMatch().then(({ body }) => {
+      const calculatePoints = (player) => Object.values(player.stats.reduce((statsByKey, stat) => {
+        if (statsByKey[stat.key] === undefined) {
+          statsByKey[stat.key] = stat;
+        }
+
+        return statsByKey;
+      }, {})).reduce((total, stat) => {
+        const multiplier = body.pointsConfig[stat.key] ?? 0;
+        const value = Number.isFinite(Number(stat.value)) ? Number(stat.value) : 0;
+
+        return total + value * multiplier;
+      }, 0);
+
+      body.allPlayerStats.forEach((player) => {
+        expect(player.totalPoints, `${player.name} total points`).to.equal(calculatePoints(player));
+      });
+    });
+  });
+
   // GIVEN a completed match result has been finalized with drafted and undrafted player stats
   // WHEN the frontend requests the live match page data
-  // THEN the API response includes only drafted players' stats and does not include undrafted player stats
+  // THEN the API response includes only drafted players' stats and does not include the all-player archive or undrafted player totals
   it('does not send undrafted player stats to the frontend live match response', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
@@ -467,6 +498,7 @@ describe('Live match drafted player stats', () => {
       expect(frontendPlayerNames).not.to.include(homeBench[0]);
       expect(body.allPlayerStats, 'analysis-only all player stats').to.equal(undefined);
       expect(body.draftedPlayerStats, 'analysis-only drafted stats snapshot').to.equal(undefined);
+      expect(body.squads.flatMap((squad) => squad.players).some((player) => player.totalPoints !== undefined), 'analysis-only player total points').to.equal(false);
       expect(body.finalResult.winners, 'frontend winner summary').to.have.length.greaterThan(0);
     });
   });

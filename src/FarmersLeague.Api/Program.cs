@@ -628,17 +628,10 @@ static async Task<LiveMatchResult> GetInitialLiveMatch(string passkey, int match
     }
 
     var match = draftContext.Match!;
-    var completed = await GetCompletedLiveMatch(matchId, cache, cancellationToken);
-    if (completed is not null)
+    var completedLiveMatch = await GetCompletedOrFinalizedLiveMatchResponse(match, draft, scraper, cache, cancellationToken);
+    if (completedLiveMatch is not null)
     {
-        return new LiveMatchResult(ToCompletedLiveMatchResponse(match, draft, completed), null);
-    }
-
-    if (match.HasFinished)
-    {
-        completed = await FinalizeCompletedLiveMatch(match, draft, scraper, cache, cancellationToken);
-
-        return new LiveMatchResult(ToCompletedLiveMatchResponse(match, draft, completed), null);
+        return new LiveMatchResult(completedLiveMatch, null);
     }
 
     var initialState = ToLiveMatchResponse(match, draft, null);
@@ -670,22 +663,33 @@ static async Task<LiveMatchResponse?> GetTrackableLiveMatch(int matchId, IWorldC
         return null;
     }
 
-    var completed = await GetCompletedLiveMatch(matchId, cache, cancellationToken);
-    if (completed is not null)
+    var completedLiveMatch = await GetCompletedOrFinalizedLiveMatchResponse(match, draft, scraper, cache, cancellationToken);
+    if (completedLiveMatch is not null)
     {
-        return ToCompletedLiveMatchResponse(match, draft, completed);
-    }
-
-    if (match.HasFinished)
-    {
-        completed = await FinalizeCompletedLiveMatch(match, draft, scraper, cache, cancellationToken);
-
-        return ToCompletedLiveMatchResponse(match, draft, completed);
+        return completedLiveMatch;
     }
 
     var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), scraper, cancellationToken);
 
     return ToLiveMatchResponse(match, draft, stats);
+}
+
+static async Task<LiveMatchResponse?> GetCompletedOrFinalizedLiveMatchResponse(MatchResponse match, DraftState draft, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
+{
+    var completed = await GetCompletedLiveMatch(match.Id, cache, cancellationToken);
+    if (completed is not null)
+    {
+        return ToCompletedLiveMatchResponse(match, draft, completed);
+    }
+
+    if (!match.HasFinished)
+    {
+        return null;
+    }
+
+    completed = await FinalizeCompletedLiveMatch(match, draft, scraper, cache, cancellationToken);
+
+    return ToCompletedLiveMatchResponse(match, draft, completed);
 }
 
 static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResponse match, DraftState draft, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
@@ -702,6 +706,7 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
         .ToArray();
     var allStats = await GetPlayerStats(match.Id, allPlayerNames, scraper, cancellationToken)
         ?? new PlayerStatsResponse(match.Id.ToString(), [], allPlayerNames);
+    var pointsConfig = LiveScoringConfig.PointMultipliers.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
     var draftedPlayerNames = draft.Picks.Select(pick => pick.PlayerName).ToHashSet(StringComparer.Ordinal);
     var draftedByPlayerName = draft.Picks
         .GroupBy(pick => pick.PlayerName, StringComparer.Ordinal)
@@ -714,7 +719,7 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
         .GroupBy(pick => pick.UserName, StringComparer.Ordinal)
         .Select(group => new LiveSquadFinalScoreResponse(
             group.Key,
-            group.Sum(pick => statsByPlayerName.TryGetValue(pick.PlayerName, out var player) ? LivePlayerPoints(player, LiveScoringConfig.PointMultipliers) : 0)))
+            group.Sum(pick => statsByPlayerName.TryGetValue(pick.PlayerName, out var player) ? LivePlayerPoints(player, pointsConfig) : 0)))
         .ToArray();
     var winningScore = squads.Length == 0 ? 0 : squads.Max(squad => squad.TotalPoints);
     var winners = squads
@@ -726,8 +731,8 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
         winners,
         squads,
         draftedStats,
-        allStats.Players.Select(player => ToArchivedPlayerStats(player, draftedByPlayerName)).ToArray(),
-        LiveScoringConfig.PointMultipliers.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
+        allStats.Players.Select(player => ToArchivedPlayerStats(player, draftedByPlayerName, pointsConfig)).ToArray(),
+        pointsConfig,
         DateTimeOffset.UtcNow);
 
     await SaveCompletedLiveMatch(match.Id, completed, cache, cancellationToken);
@@ -877,22 +882,26 @@ static async Task<DraftResponse> SaveAndBroadcastDraft(int matchId, MatchRespons
 
 static DraftUpdateMessage ToDraftUpdateMessage(DraftState draft)
 {
-    draft = DraftRules.Normalize(draft);
-    var isComplete = DraftRules.IsComplete(draft);
-    var status = isComplete ? DraftStatuses.Completed : draft.Status;
-    var currentTurn = string.Equals(status, DraftStatuses.Started, StringComparison.Ordinal) && !isComplete ? GetCurrentTurn(draft) : null;
+    var viewState = ToDraftViewState(draft);
 
-    return new DraftUpdateMessage("draftUpdate", status, draft.JoinedUsers, draft.DraftOrder, draft.DraftTurnOrder ?? [], draft.Picks, currentTurn, isComplete);
+    return new DraftUpdateMessage("draftUpdate", viewState.Status, viewState.Draft.JoinedUsers, viewState.Draft.DraftOrder, viewState.Draft.DraftTurnOrder ?? [], viewState.Draft.Picks, viewState.CurrentTurn, viewState.IsComplete);
 }
 
 static DraftResponse ToDraftResponse(MatchResponse match, DraftState draft)
+{
+    var viewState = ToDraftViewState(draft);
+
+    return new DraftResponse(match, viewState.Status, viewState.Draft.JoinedUsers, viewState.Draft.DraftOrder, viewState.Draft.DraftTurnOrder ?? [], viewState.Draft.Picks, viewState.CurrentTurn, viewState.IsComplete);
+}
+
+static DraftViewState ToDraftViewState(DraftState draft)
 {
     draft = DraftRules.Normalize(draft);
     var isComplete = DraftRules.IsComplete(draft);
     var status = isComplete ? DraftStatuses.Completed : draft.Status;
     var currentTurn = string.Equals(status, DraftStatuses.Started, StringComparison.Ordinal) && !isComplete ? GetCurrentTurn(draft) : null;
 
-    return new DraftResponse(match, status, draft.JoinedUsers, draft.DraftOrder, draft.DraftTurnOrder ?? [], draft.Picks, currentTurn, isComplete);
+    return new DraftViewState(draft, status, currentTurn, isComplete);
 }
 
 static bool HasMatchStarted(MatchResponse match) => match.HasStarted || match.HasFinished;
@@ -1043,7 +1052,7 @@ static PlayerStatsPlayerResponse ToPlayerStatsPlayerResponse(WorldCupPlayerStats
     player.IsGoalkeeper,
     player.Categories.Select(ToPlayerStatCategoryResponse).ToArray());
 
-static ArchivedPlayerStatsPlayerResponse ToArchivedPlayerStats(PlayerStatsPlayerResponse player, IReadOnlyDictionary<string, string> draftedByPlayerName) => new(
+static ArchivedPlayerStatsPlayerResponse ToArchivedPlayerStats(PlayerStatsPlayerResponse player, IReadOnlyDictionary<string, string> draftedByPlayerName, IReadOnlyDictionary<string, int> pointsConfig) => new(
     player.Id,
     player.OptaId,
     player.Name,
@@ -1054,7 +1063,8 @@ static ArchivedPlayerStatsPlayerResponse ToArchivedPlayerStats(PlayerStatsPlayer
     player.Categories,
     draftedByPlayerName.GetValueOrDefault(player.Name),
     player.TeamName,
-    player.Categories.SelectMany(category => category.Stats).ToArray());
+    player.Categories.SelectMany(category => category.Stats).ToArray(),
+    LivePlayerPoints(player, pointsConfig));
 
 static PlayerStatCategoryResponse ToPlayerStatCategoryResponse(WorldCupPlayerStatCategoryResponse category) => new(
     category.Key,

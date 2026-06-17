@@ -32,7 +32,8 @@ record ArchivedPlayerStatsPlayerResponse(
     IReadOnlyList<PlayerStatCategoryResponse> Categories,
     string? DraftedBy,
     string Team,
-    IReadOnlyList<PlayerStatResponse> Stats);
+    IReadOnlyList<PlayerStatResponse> Stats,
+    int TotalPoints);
 
 record PlayerStatsRequest(IReadOnlyList<string> Players);
 
