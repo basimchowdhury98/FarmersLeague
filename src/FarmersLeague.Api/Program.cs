@@ -170,9 +170,9 @@ app.MapPost("/api/drafts/{matchId:int}/start", async (int matchId, DraftStartReq
     }
 
     var cachedLineups = await GetCachedLineups(matchId, cache, cancellationToken);
-    if (!HasConfirmedFullLineups(cachedLineups))
+    if (!HasConfirmedStartingLineups(cachedLineups))
     {
-        return Results.BadRequest(new DraftPickErrorResponse("Starting lineups and full benches are not confirmed"));
+        return Results.BadRequest(new DraftPickErrorResponse("Starting lineups are not confirmed"));
     }
 
     var match = draftContext.Match! with { Lineups = cachedLineups };
@@ -559,7 +559,7 @@ static async Task<IReadOnlyList<LineupResponse>> GetScraperLineups(IWorldCupScra
 static async Task<IReadOnlyList<LineupResponse>> GetAdminOpenDraftLineups(int matchId, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
     var lineups = await GetScraperLineups(scraper, matchId.ToString(), cancellationToken);
-    if (HasConfirmedFullLineups(lineups))
+    if (HasConfirmedStartingLineups(lineups))
     {
         await SaveConfirmedLineups(matchId, lineups, cache, cancellationToken);
     }
@@ -570,7 +570,7 @@ static async Task<IReadOnlyList<LineupResponse>> GetAdminOpenDraftLineups(int ma
 static async Task<IReadOnlyList<LineupResponse>> GetStartedDraftLineups(int matchId, string draftStatus, IWorldCupScraper scraper, IDistributedCache cache, ILogger logger, CancellationToken cancellationToken)
 {
     var cachedLineups = await GetCachedLineups(matchId, cache, cancellationToken);
-    if (HasConfirmedFullLineups(cachedLineups))
+    if (HasConfirmedStartingLineups(cachedLineups))
     {
         return cachedLineups;
     }
@@ -578,7 +578,7 @@ static async Task<IReadOnlyList<LineupResponse>> GetStartedDraftLineups(int matc
     logger.LogError("Confirmed lineup cache missing for {DraftStatus} draft {MatchId}; attempting scraper recovery", draftStatus, matchId);
 
     var recoveredLineups = await GetScraperLineups(scraper, matchId.ToString(), cancellationToken);
-    if (HasConfirmedFullLineups(recoveredLineups))
+    if (HasConfirmedStartingLineups(recoveredLineups))
     {
         await SaveConfirmedLineups(matchId, recoveredLineups, cache, cancellationToken);
         return recoveredLineups;
@@ -906,9 +906,9 @@ static DraftViewState ToDraftViewState(DraftState draft)
 
 static bool HasMatchStarted(MatchResponse match) => match.HasStarted || match.HasFinished;
 
-static bool HasConfirmedFullLineups(IReadOnlyList<LineupResponse> lineups) =>
+static bool HasConfirmedStartingLineups(IReadOnlyList<LineupResponse> lineups) =>
     lineups.Count >= 2
-    && lineups.All(lineup => WorldCupLineupRules.HasFullSquad(lineup.Starters.Count, lineup.Bench.Count));
+    && lineups.All(lineup => WorldCupLineupRules.HasConfirmedStarters(lineup.Starters.Count));
 
 static bool HasPlayerInMatch(MatchResponse match, string playerName) =>
     match.Lineups.SelectMany(lineup => lineup.Starters).Any(starter => string.Equals(starter.Name, playerName, StringComparison.Ordinal));

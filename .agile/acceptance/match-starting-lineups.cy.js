@@ -6,7 +6,6 @@
 describe('Match draft page', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
-  const fullBenchPlayerCount = 15;
 
   let match;
   let matchLabel;
@@ -24,7 +23,7 @@ describe('Match draft page', () => {
 
       cy.request(`/api/drafts/${match.id}?passkey=${alicePasskey}`).then(({ body: draft }) => {
         expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
-        expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)).to.equal(true);
+        expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
 
         homeStarters = draft.match.lineups[0].starters.map((player) => player.name);
         awayStarters = draft.match.lineups[1].starters.map((player) => player.name);

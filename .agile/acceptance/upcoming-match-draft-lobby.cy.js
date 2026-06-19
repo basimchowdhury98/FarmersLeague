@@ -7,7 +7,6 @@ describe('Upcoming match draft lobby', () => {
   const bobPasskey = 'bob-2222-2222-2222';
   const carolPasskey = 'carol-3333-3333-3333';
   const predictedLineupMatchId = 1003;
-  const fullBenchPlayerCount = 15;
   const lineupUnavailableMessage = 'No lineup available yet. Draft can\'t start until the starting lineup is available.';
 
   let match;
@@ -36,7 +35,7 @@ describe('Upcoming match draft lobby', () => {
           const lineups = response.body?.match?.lineups ?? [];
           const hasFullLineups = response.status === 200
             && lineups.length === 2
-            && lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount);
+            && lineups.every((lineup) => lineup.starters.length === 11);
 
           if (!hasFullLineups) {
             return findDraftableMatch(rest);

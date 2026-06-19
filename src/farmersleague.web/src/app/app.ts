@@ -1,6 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
-import { draftedHighlightDurationMs, draftPickFlightDurationMs, fullBenchPlayerCount, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
+import { draftedHighlightDurationMs, draftPickFlightDurationMs, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
 import { livePlayerPoints, liveStatPoints, scoringLivePlayerCategories } from './live-scoring';
 import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchLiveMessage, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
 
@@ -323,9 +323,9 @@ export class App {
     return !this.hasMatchStartedOrFinished(match) || !!match.draft;
   }
 
-  protected hasConfirmedFullSquads(match: MatchResponse) {
+  protected hasConfirmedStartingLineups(match: MatchResponse) {
     return match.lineups.length >= 2
-      && match.lineups.every((lineup) => lineup.starters.length === startingPlayerCount && lineup.bench.length === fullBenchPlayerCount);
+      && match.lineups.every((lineup) => lineup.starters.length === startingPlayerCount);
   }
 
   protected lineupUnavailableMessage() {
@@ -337,7 +337,7 @@ export class App {
   }
 
   protected canStartDraft(draft: DraftResponse) {
-    return this.canManageDraftLifecycle() && !this.hasMatchStartedOrFinished(draft.match) && draft.joinedUsers.length >= 2 && this.hasConfirmedFullSquads(draft.match);
+    return this.canManageDraftLifecycle() && !this.hasMatchStartedOrFinished(draft.match) && draft.joinedUsers.length >= 2 && this.hasConfirmedStartingLineups(draft.match);
   }
 
   protected canShowStartDraft(draft: DraftResponse) {
@@ -676,7 +676,7 @@ export class App {
     this.http.get<DraftResponse>(`/api/drafts/${matchId}?passkey=${encodeURIComponent(this.passkey())}`).subscribe((response) => {
       this.draftError.set('');
       this.draft.set(response);
-      if (response.status !== 'open' && !this.hasConfirmedFullSquads(response.match)) {
+      if (response.status !== 'open' && !this.hasConfirmedStartingLineups(response.match)) {
         this.draftError.set('Unable to load confirmed lineups for this started draft. Please try again.');
       }
       this.connectDraftLiveUpdates(matchId);

@@ -303,7 +303,7 @@
               @if (draftState.joinedUsers.length < 2) {
                 <p class="draft-warning" data-test="draft-start-warning">Starting a draft requires at least two joined users.</p>
               }
-              @if (!hasConfirmedFullSquads(draftState.match)) {
+              @if (!hasConfirmedStartingLineups(draftState.match)) {
                 <p class="draft-warning" data-test="lineup-unavailable-banner">{{ lineupUnavailableMessage() }}</p>
               }
               @if (canShowStartDraft(draftState)) {

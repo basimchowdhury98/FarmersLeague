@@ -9,7 +9,6 @@ describe('Draft match start cutoff', () => {
   const noLineupMatchId = 1002;
   const predictedLineupMatchId = 1003;
   const incompleteBenchMatchId = 1004;
-  const fullBenchPlayerCount = 15;
 
   let match;
   let noLineupMatch;
@@ -40,7 +39,7 @@ describe('Draft match start cutoff', () => {
   const loadConfirmedLineups = () => {
     cy.request(`/api/drafts/${draftableMatchId}?passkey=${alicePasskey}`).then(({ body: draft }) => {
       expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
-      expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11 && lineup.bench.length === fullBenchPlayerCount)).to.equal(true);
+      expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
 
       homeStarters = draft.match.lineups[0].starters.map((player) => player.name);
       awayStarters = draft.match.lineups[1].starters.map((player) => player.name);
@@ -116,7 +115,7 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN an upcoming match has Preview tab lineup data that is not predicted, confirmed starting 11s and full benches for both teams, an open draft exists, and at least two users have joined
+  // GIVEN an upcoming match has Preview tab lineup data that is not predicted, confirmed starting 11s for both teams, an open draft exists, and at least two users have joined
   // WHEN an admin starts the draft before the scraper says the match has started
   // THEN the draft starts successfully using the Preview tab lineup
   it('starts a joined draft before the scraper says the match has started', () => {
@@ -178,7 +177,7 @@ describe('Draft match start cutoff', () => {
 
   // GIVEN a match has not started but the Preview tab lineup data is absent
   // WHEN an admin attempts to start its draft
-  // THEN the draft is not started and an error explains that starting lineups and full benches are not confirmed
+  // THEN the draft is not started and an error explains that starting lineups are not confirmed
   it('rejects starting a draft before the Preview tab lineup is available', () => {
     setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -189,13 +188,13 @@ describe('Draft match start cutoff', () => {
       failOnStatusCode: false
     }).then((response) => {
       expect(response.status).to.equal(400);
-      expect(response.body.message).to.equal('Starting lineups and full benches are not confirmed');
+      expect(response.body.message).to.equal('Starting lineups are not confirmed');
     });
   });
 
   // GIVEN a match has not started and the Preview tab lineup data is marked as predicted
   // WHEN an admin attempts to start its draft
-  // THEN the draft is not started and an error explains that starting lineups and full benches are not confirmed
+  // THEN the draft is not started and an error explains that starting lineups are not confirmed
   it('rejects starting a draft while the Preview tab lineup is predicted', () => {
     setPredictedLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -206,24 +205,25 @@ describe('Draft match start cutoff', () => {
       failOnStatusCode: false
     }).then((response) => {
       expect(response.status).to.equal(400);
-      expect(response.body.message).to.equal('Starting lineups and full benches are not confirmed');
+      expect(response.body.message).to.equal('Starting lineups are not confirmed');
     });
   });
 
   // GIVEN a match has not started and the Preview tab lineup data is not predicted but does not include full benches for both teams
-  // WHEN an admin attempts to start its draft
-  // THEN the draft is not started and an error explains that starting lineups and full benches are not confirmed
-  it('rejects starting a draft when the Preview tab lineup does not include full benches', () => {
+  // WHEN an admin views the draft and starts it
+  // THEN the draft starts successfully and includes the available bench players
+  it('starts a draft when confirmed starters are available without full benches', () => {
     setIncompleteBenchDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
-    cy.request({
-      method: 'POST',
-      url: `/api/drafts/${incompleteBenchMatchId}/start`,
-      body: { passkey: alicePasskey, draftOrderMode: 'roundRobin' },
-      failOnStatusCode: false
-    }).then((response) => {
-      expect(response.status).to.equal(400);
-      expect(response.body.message).to.equal('Starting lineups and full benches are not confirmed');
+    cy.request(`/api/drafts/${incompleteBenchMatchId}?passkey=${alicePasskey}`).then(({ body: draft }) => {
+      expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
+      expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
+      expect(draft.match.lineups.every((lineup) => lineup.bench.length === 5)).to.equal(true);
+    });
+
+    cy.request('POST', `/api/drafts/${incompleteBenchMatchId}/start`, { passkey: alicePasskey, draftOrderMode: 'roundRobin' }).then(({ body }) => {
+      expect(body.status).to.equal('started');
+      expect(body.match.lineups.every((lineup) => lineup.bench.length === 5)).to.equal(true);
     });
   });
 
