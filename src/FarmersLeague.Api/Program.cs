@@ -1161,7 +1161,8 @@ static LeagueUser[] SeededUsers(bool includeTestUsers)
     {
         new("Basim", "basim-e537-dc50-3bb8", true),
         new("Avi", "avi-79fa-1d3a-3460", false),
-        new("Suyash", "suyash-1efa-61d5-4fb3", false)
+        new("Suyash", "suyash-1efa-61d5-4fb3", false),
+        new("Mahlee", "mahlee-8cedeeb6-007f-4dd5", false)
     };
 
     if (includeTestUsers)
