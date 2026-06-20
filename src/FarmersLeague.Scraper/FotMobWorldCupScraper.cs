@@ -91,10 +91,10 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
             .Select(property => ToPlayerStatsPlayer(property.Value))
             .ToArray();
 
-        return SelectRequestedPlayerStats(gameId, players, requestedPlayers);
+        return SelectRequestedPlayerStats(gameId, players, requestedPlayers, TryGetMatchStatus(root.Value, out var status) ? status : null);
     }
 
-    private static WorldCupPlayerStatsResponse SelectRequestedPlayerStats(string gameId, IReadOnlyList<WorldCupPlayerStatsPlayerResponse> players, IReadOnlyList<string> requestedPlayers)
+    private static WorldCupPlayerStatsResponse SelectRequestedPlayerStats(string gameId, IReadOnlyList<WorldCupPlayerStatsPlayerResponse> players, IReadOnlyList<string> requestedPlayers, WorldCupGameStatusResponse? status = null)
     {
         var foundPlayers = new List<WorldCupPlayerStatsPlayerResponse>();
         var missingPlayers = new List<string>();
@@ -114,7 +114,7 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
             }
         }
 
-        return new WorldCupPlayerStatsResponse(gameId, foundPlayers, missingPlayers);
+        return new WorldCupPlayerStatsResponse(gameId, foundPlayers, missingPlayers, status);
     }
 
     private async Task<JsonElement?> GetMatchPageRoot(string gameId, CancellationToken cancellationToken)
@@ -209,13 +209,47 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
             OptionalString(match, "round"),
             OptionalString(match, "roundName"),
             startTimeUtc,
-            new WorldCupGameStatusResponse(
-                OptionalBool(status, "started") ?? false,
-                OptionalBool(status, "finished") ?? false,
-                OptionalString(status, "scoreStr"),
-                OptionalString(status, "reason"),
-                OptionalString(status, "liveTime")));
+            ToGameStatus(status));
     }
+
+    private static bool TryGetMatchStatus(JsonElement root, out WorldCupGameStatusResponse status)
+    {
+        status = default!;
+
+        if (!root.TryGetProperty("props", out var props)
+            || !props.TryGetProperty("pageProps", out var pageProps)
+            || !pageProps.TryGetProperty("header", out var header)
+            || !TryGetObject(header, "status", out var statusElement))
+        {
+            return false;
+        }
+
+        status = ToGameStatus(statusElement);
+        return true;
+    }
+
+    private static WorldCupGameStatusResponse ToGameStatus(JsonElement status)
+    {
+        var reason = TryGetObject(status, "reason", out var reasonElement)
+            ? new WorldCupGameStatusReasonResponse(
+                OptionalString(reasonElement, "short"),
+                OptionalString(reasonElement, "shortKey"),
+                OptionalString(reasonElement, "long"),
+                OptionalString(reasonElement, "longKey"))
+            : null;
+
+        return new WorldCupGameStatusResponse(
+            OptionalBool(status, "started") ?? false,
+            OptionalBool(status, "finished") ?? IsFullTime(reason),
+            OptionalString(status, "scoreStr"),
+            reason,
+            OptionalString(status, "liveTime"));
+    }
+
+    private static bool IsFullTime(WorldCupGameStatusReasonResponse? reason) =>
+        string.Equals(reason?.Short, "FT", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(reason?.Long, "Full-Time", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(reason?.LongKey, "finished", StringComparison.OrdinalIgnoreCase);
 
     private static FotMobFixtureMatch ToFixtureMatch(JsonElement match) => new(
         ToGame(match),

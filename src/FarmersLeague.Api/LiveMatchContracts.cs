@@ -37,7 +37,11 @@ record ArchivedPlayerStatsPlayerResponse(
 
 record PlayerStatsRequest(IReadOnlyList<string> Players);
 
-record PlayerStatsResponse(string GameId, IReadOnlyList<PlayerStatsPlayerResponse> Players, IReadOnlyList<string> MissingPlayers);
+record PlayerStatsResponse(string GameId, IReadOnlyList<PlayerStatsPlayerResponse> Players, IReadOnlyList<string> MissingPlayers, PlayerStatsMatchStatusResponse? Status = null);
+
+record PlayerStatsMatchStatusResponse(bool Started, bool Finished, string? Score, PlayerStatsMatchStatusReasonResponse? Reason, string? LiveTime);
+
+record PlayerStatsMatchStatusReasonResponse(string? Short, string? ShortKey, string? Long, string? LongKey);
 
 record PlayerStatsPlayerResponse(string Id, string? OptaId, string Name, string TeamId, string TeamName, string? ShirtNumber, bool IsGoalkeeper, IReadOnlyList<PlayerStatCategoryResponse> Categories);
 

@@ -109,6 +109,10 @@ describe('Live match drafted player stats', () => {
     cy.setScraperMatchStatus(match.id, status);
   };
 
+  const setScraperLiveMatchStatus = (status) => {
+    cy.setScraperLiveMatchStatus(match.id, status);
+  };
+
   const clearCompletedLiveMatch = () => {
     cy.request('DELETE', `/api/testing/live-matches/${match.id}/completed`)
       .its('status')
@@ -524,9 +528,9 @@ describe('Live match drafted player stats', () => {
   });
 
   // GIVEN Alice has a completed draft's live match page open while the real match is ongoing
-  // WHEN the scraper changes the match to finished and the live match result is finalized
-  // THEN Alice's open page receives a WebSocket update and shows the final winner without requiring a manual refresh
-  it('updates an open live match page with the final winner over the live updates socket', () => {
+  // WHEN the live scraper poll receives a Full-Time match status from the match stats page
+  // THEN Alice's open page receives a WebSocket update, shows the final winner, and archives the full completed match for stats exploration
+  it('finalizes and archives an open live match from the live stats full-time update', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: false });
 
@@ -534,10 +538,25 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-match-page').should('be.visible');
     cy.testGet('live-match-result').should('not.exist');
 
-    setScraperMatchStatus({ started: true, finished: true });
+    setScraperLiveMatchStatus({ started: true, finished: true, score: '2 - 1' });
 
-    cy.testGet('live-match-result', { timeout: 15000 }).should('be.visible').and('contain.text', 'Final result');
+    cy.testGet('live-match-result', { timeout: 35000 }).should('be.visible').and('contain.text', 'Final result');
     cy.testGet('live-match-winner').should('be.visible').and('contain.text', 'Winner');
+    cy.testGet('live-match-page').invoke('text').then((pageText) => {
+      cachedCompletedLiveMatch().then(({ body }) => {
+        expect(body.match.id).to.equal(match.id);
+        expect(body.match.hasStarted).to.equal(true);
+        expect(body.match.hasFinished).to.equal(true);
+        expect(body.match.score).to.equal('2 - 1');
+        expect(body.winners, 'archived winners').to.have.length.greaterThan(0);
+        expect(body.squads.map((squad) => squad.userName)).to.have.members(['Alice', 'Bob']);
+        expect(body.draftedPlayerStats, 'archived drafted player stats').to.have.length(6);
+        expect(body.allPlayerStats, 'archived all player stats').to.have.length.greaterThan(body.draftedPlayerStats.length);
+        expect(body.allPlayerStats.map((player) => player.name), 'archived bench stats').to.include(homeBench[0]);
+        expect(body.pointsConfig, 'archived scoring config snapshot').to.include({ goals: 10, goals_prevented: 0 });
+        body.winners.forEach((winner) => expect(pageText).to.contain(winner));
+      });
+    });
   });
 
   // GIVEN a match has a draft that is open or in progress but not completed

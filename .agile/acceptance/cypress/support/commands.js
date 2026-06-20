@@ -11,3 +11,9 @@ Cypress.Commands.add('setScraperMatchStatus', (matchId, status) => {
     .its('status')
     .should('equal', 204);
 });
+
+Cypress.Commands.add('setScraperLiveMatchStatus', (matchId, status) => {
+  cy.request('PUT', `/api/testing/world-cup-2026/games/${matchId}/live-status`, status)
+    .its('status')
+    .should('equal', 204);
+});

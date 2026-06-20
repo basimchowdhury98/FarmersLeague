@@ -453,6 +453,16 @@ app.MapPut("/api/testing/world-cup-2026/games/{gameId}/status", async (string ga
     return Results.NoContent();
 });
 
+app.MapPut("/api/testing/world-cup-2026/games/{gameId}/live-status", (string gameId, TestingGameStatusRequest request) =>
+{
+    if (!FotMobWorldCupScraper.SetMockGameStatus(gameId, request.Started, request.Finished, request.Score))
+    {
+        return Results.NotFound(new { title = "Mock game not found" });
+    }
+
+    return Results.NoContent();
+});
+
 app.MapGet("/api/testing/live-matches/{matchId:int}/completed", async (int matchId, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     var completed = await GetCompletedLiveMatch(matchId, cache, cancellationToken);
@@ -670,6 +680,18 @@ static async Task<LiveMatchResponse?> GetTrackableLiveMatch(int matchId, IWorldC
     }
 
     var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), scraper, cancellationToken);
+    if (IsFullTime(stats?.Status))
+    {
+        var finalMatch = match with
+        {
+            HasStarted = true,
+            HasFinished = true,
+            Score = stats?.Status?.Score ?? match.Score
+        };
+        var completed = await FinalizeCompletedLiveMatch(finalMatch, draft, scraper, cache, cancellationToken);
+
+        return ToCompletedLiveMatchResponse(finalMatch, draft, completed);
+    }
 
     return ToLiveMatchResponse(match, draft, stats);
 }
@@ -906,6 +928,12 @@ static DraftViewState ToDraftViewState(DraftState draft)
 
 static bool HasMatchStarted(MatchResponse match) => match.HasStarted || match.HasFinished;
 
+static bool IsFullTime(PlayerStatsMatchStatusResponse? status) =>
+    status?.Finished == true
+    || string.Equals(status?.Reason?.Short, "FT", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(status?.Reason?.Long, "Full-Time", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(status?.Reason?.LongKey, "finished", StringComparison.OrdinalIgnoreCase);
+
 static bool HasConfirmedStartingLineups(IReadOnlyList<LineupResponse> lineups) =>
     lineups.Count >= 2
     && lineups.All(lineup => WorldCupLineupRules.HasConfirmedStarters(lineup.Starters.Count));
@@ -1040,7 +1068,15 @@ static HomeMatchResponse ToCachedHomeMatchResponse(CachedHomeMatch match)
 static PlayerStatsResponse ToPlayerStatsResponse(WorldCupPlayerStatsResponse stats) => new(
     stats.GameId,
     stats.Players.Select(ToPlayerStatsPlayerResponse).ToArray(),
-    stats.MissingPlayers);
+    stats.MissingPlayers,
+    stats.Status is null ? null : ToPlayerStatsMatchStatusResponse(stats.Status));
+
+static PlayerStatsMatchStatusResponse ToPlayerStatsMatchStatusResponse(WorldCupGameStatusResponse status) => new(
+    status.Started,
+    status.Finished,
+    status.Score,
+    status.Reason is null ? null : new PlayerStatsMatchStatusReasonResponse(status.Reason.Short, status.Reason.ShortKey, status.Reason.Long, status.Reason.LongKey),
+    status.LiveTime);
 
 static PlayerStatsPlayerResponse ToPlayerStatsPlayerResponse(WorldCupPlayerStatsPlayerResponse player) => new(
     player.Id,

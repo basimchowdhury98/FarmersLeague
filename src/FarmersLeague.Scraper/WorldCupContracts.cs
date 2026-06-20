@@ -23,7 +23,9 @@ public record WorldCupGameResponse(
 
 public record WorldCupTeamResponse(string Id, string Name, string? ShortName);
 
-public record WorldCupGameStatusResponse(bool Started, bool Finished, string? Score, string? Reason, string? LiveTime);
+public record WorldCupGameStatusResponse(bool Started, bool Finished, string? Score, WorldCupGameStatusReasonResponse? Reason, string? LiveTime);
+
+public record WorldCupGameStatusReasonResponse(string? Short, string? ShortKey, string? Long, string? LongKey);
 
 public record WorldCupLineupResponse(
     string GameId,
@@ -72,7 +74,8 @@ public record WorldCupPlayerStatsRequest(IReadOnlyList<string> Players);
 public record WorldCupPlayerStatsResponse(
     string GameId,
     IReadOnlyList<WorldCupPlayerStatsPlayerResponse> Players,
-    IReadOnlyList<string> MissingPlayers);
+    IReadOnlyList<string> MissingPlayers,
+    WorldCupGameStatusResponse? Status = null);
 
 public record WorldCupPlayerStatsPlayerResponse(
     string Id,

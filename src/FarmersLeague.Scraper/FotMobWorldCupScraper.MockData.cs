@@ -18,7 +18,7 @@ public partial class FotMobWorldCupScraper
             return false;
         }
 
-        MockGameStatusOverrides[gameId] = new WorldCupGameStatusResponse(started, finished, score, "Mock mode override", null);
+        MockGameStatusOverrides[gameId] = new WorldCupGameStatusResponse(started, finished, score, MockStatusReason(finished), null);
 
         return true;
     }
@@ -33,7 +33,7 @@ public partial class FotMobWorldCupScraper
             "1",
             "Group stage",
             DateTimeOffset.UtcNow.AddMinutes(30),
-            new WorldCupGameStatusResponse(false, false, null, "Mock mode", null)),
+            new WorldCupGameStatusResponse(false, false, null, new WorldCupGameStatusReasonResponse(null, null, "Mock mode", null), null)),
         new(
             MockNoLineupGameId,
             new WorldCupTeamResponse("60", "Brazil", "BRA"),
@@ -42,7 +42,7 @@ public partial class FotMobWorldCupScraper
             "1",
             "Group stage",
             DateTimeOffset.UtcNow.AddMinutes(60),
-            new WorldCupGameStatusResponse(false, false, null, "Mock mode", null)),
+            new WorldCupGameStatusResponse(false, false, null, new WorldCupGameStatusReasonResponse(null, null, "Mock mode", null), null)),
         new(
             MockPredictedLineupGameId,
             new WorldCupTeamResponse("80", "Argentina", "ARG"),
@@ -51,7 +51,7 @@ public partial class FotMobWorldCupScraper
             "1",
             "Group stage",
             DateTimeOffset.UtcNow.AddMinutes(120),
-            new WorldCupGameStatusResponse(false, false, null, "Mock mode", null)),
+            new WorldCupGameStatusResponse(false, false, null, new WorldCupGameStatusReasonResponse(null, null, "Mock mode", null), null)),
         new(
             MockIncompleteBenchGameId,
             new WorldCupTeamResponse("100", "Iraq", "IRQ"),
@@ -60,7 +60,7 @@ public partial class FotMobWorldCupScraper
             "1",
             "Group stage",
             DateTimeOffset.UtcNow.AddMinutes(30),
-            new WorldCupGameStatusResponse(false, false, null, "Mock mode", null))
+            new WorldCupGameStatusResponse(false, false, null, new WorldCupGameStatusReasonResponse(null, null, "Mock mode", null), null))
     ]);
 
     private static IReadOnlyList<WorldCupGameResponse> ApplyMockStatusOverrides(IReadOnlyList<WorldCupGameResponse> games) =>
@@ -100,7 +100,9 @@ public partial class FotMobWorldCupScraper
             .Select((player, index) => MockPlayerStatsPlayer(player.Team, player.Player, index, step))
             .ToArray();
 
-        return SelectRequestedPlayerStats(gameId, players, requestedPlayers);
+        var status = MockGameStatusOverrides.GetValueOrDefault(gameId);
+
+        return SelectRequestedPlayerStats(gameId, players, requestedPlayers, status);
     }
 
     private static IReadOnlyList<(WorldCupLineupTeamResponse Team, WorldCupLineupPlayerResponse Player)> MockLineupPlayers(WorldCupLineupResponse lineup) =>
@@ -243,6 +245,10 @@ public partial class FotMobWorldCupScraper
             new DateTimeOffset(DateTimeOffset.UtcNow.UtcDateTime.Date, TimeSpan.Zero).AddDays(7),
             new WorldCupGameStatusResponse(false, false, null, null, null))
     ];
+
+    private static WorldCupGameStatusReasonResponse MockStatusReason(bool finished) => finished
+        ? new WorldCupGameStatusReasonResponse("FT", "fulltime_short", "Full-Time", "finished")
+        : new WorldCupGameStatusReasonResponse(null, null, "Mock mode override", null);
 
     private static WorldCupLineupResponse FixtureLineup() => CanadaMexicoLineup(FixtureGameId, "confirmed", "fixture");
 
