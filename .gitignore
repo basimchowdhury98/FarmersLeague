@@ -3,6 +3,7 @@
 **/node_modules/
 **/dist/
 **/.angular/
+.env
 .agile/acceptance/videos/
 .agile/acceptance/screenshots/
 .playwright-mcp/**

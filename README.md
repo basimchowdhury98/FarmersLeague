@@ -31,6 +31,30 @@ make val
 - App: `http://localhost:8080`
 - Scraper-backed matches: `http://localhost:8080/api/matches`
 
+## Completed Game Stats Explorer
+
+Run the terminal stats explorer from the repo root:
+
+```sh
+dotnet run --project tools/FarmersLeague.StatsExplorer
+```
+
+Or create a local `.env` file with `Redis__ConnectionString=<prod redis connection string>` and run:
+
+```sh
+make stat
+```
+
+It reads completed game keys matching `FarmersLeague:live-matches:*:completed`, lets you select one game, then shows squad totals, all player points, and optional per-player stat breakdowns.
+
+For Upstash/production Redis:
+
+```sh
+dotnet run --project tools/FarmersLeague.StatsExplorer -- --redis "<UPSTASH_ENDPOINT>:<UPSTASH_PORT>,password=<UPSTASH_PASSWORD>,ssl=True,abortConnect=False"
+```
+
+You can also set `Redis__ConnectionString` instead of passing `--redis`, or jump directly to one match with `--game <match-id>`.
+
 ## Render
 
 Use Render's free tier with one manually created Docker web service:

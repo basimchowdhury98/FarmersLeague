@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: mock run val down
+.PHONY: mock run stat val down
 
 CYPRESS_ACCEPTANCE_SPECS := *.cy.js
 
@@ -9,6 +9,12 @@ mock:
 
 run:
 	docker compose up --build app redis
+
+stat:
+	@if [ ! -f .env ]; then echo "Missing .env. Add Redis__ConnectionString=<prod redis connection string>."; exit 1; fi; \
+	set -a; source .env; set +a; \
+	if [ -z "$${Redis__ConnectionString:-}" ]; then echo "Missing Redis__ConnectionString in .env"; exit 1; fi; \
+	dotnet run --project tools/FarmersLeague.StatsExplorer -- --redis "$${Redis__ConnectionString}"
 
 val:
 	set -e; \
