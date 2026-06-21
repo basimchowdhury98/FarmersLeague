@@ -1,5 +1,4 @@
 import { LivePlayer, PlayerStat, PlayerStatCategory } from './models';
-import { liveStatPointMultipliers } from './scoring.config';
 
 export function livePlayerPoints(player: LivePlayer | null) {
   if (!player) {
@@ -11,7 +10,7 @@ export function livePlayerPoints(player: LivePlayer | null) {
 }
 
 export function liveStatPoints(stat: PlayerStat) {
-  return numericStatValue(stat.value) * (liveStatPointMultipliers[stat.key] ?? 0);
+  return stat.points;
 }
 
 export function scoringLivePlayerCategories(player: LivePlayer): PlayerStatCategory[] {
@@ -21,19 +20,6 @@ export function scoringLivePlayerCategories(player: LivePlayer): PlayerStatCateg
       stats: category.stats.filter((stat) => liveStatPoints(stat) !== 0)
     }))
     .filter((category) => category.stats.length > 0);
-}
-
-function numericStatValue(value: unknown) {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : 0;
-  }
-
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  return 0;
 }
 
 function uniqueLivePlayerStats(player: LivePlayer) {

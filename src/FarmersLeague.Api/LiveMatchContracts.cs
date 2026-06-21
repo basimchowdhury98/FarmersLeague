@@ -47,4 +47,4 @@ record PlayerStatsPlayerResponse(string Id, string? OptaId, string Name, string 
 
 record PlayerStatCategoryResponse(string Key, string Title, IReadOnlyList<PlayerStatResponse> Stats);
 
-record PlayerStatResponse(string Key, string Label, string? SourceGroup, object? Value, object? Total, string? Type);
+record PlayerStatResponse(string Key, string Label, string? SourceGroup, object? Value, object? Total, string? Type, int Points);

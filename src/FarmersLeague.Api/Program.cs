@@ -1113,7 +1113,8 @@ static PlayerStatResponse ToPlayerStatResponse(WorldCupPlayerStatResponse stat) 
     stat.SourceGroup,
     stat.Value,
     stat.Total,
-    stat.Type);
+    stat.Type,
+    CalculateLiveStatPoints(stat.Value, stat.Key, LiveScoringConfig.PointMultipliers));
 
 static LiveMatchResponse ToCompletedLiveMatchResponse(MatchResponse match, DraftState draft, CompletedLiveMatchResult completed) =>
     ToLiveMatchResponse(match, draft, new PlayerStatsResponse(match.Id.ToString(), completed.DraftedPlayerStats, []), completed);
@@ -1124,12 +1125,13 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
     var teamsByPlayerName = AllLineupPlayers(match)
         .GroupBy(player => player.Name, StringComparer.Ordinal)
         .ToDictionary(group => group.Key, group => group.First().TeamName, StringComparer.Ordinal);
+    var pointMultipliers = completed?.PointsConfig ?? LiveScoringConfig.PointMultipliers;
 
     var squads = draft.Picks
         .GroupBy(pick => pick.UserName, StringComparer.Ordinal)
         .Select(group => new LiveSquadResponse(
             group.Key,
-            group.Select(pick => ToLivePlayerResponse(pick.PlayerName, playersByName, teamsByPlayerName)).ToArray()))
+            group.Select(pick => ToLivePlayerResponse(pick.PlayerName, playersByName, teamsByPlayerName, pointMultipliers)).ToArray()))
         .ToArray();
 
     var finalResult = completed is null
@@ -1142,15 +1144,27 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
 static IEnumerable<(string Name, string TeamName)> AllLineupPlayers(MatchResponse match) =>
     match.Lineups.SelectMany(lineup => lineup.Starters.Concat(lineup.Bench).Select(player => (player.Name, lineup.TeamName)));
 
-static LivePlayerResponse ToLivePlayerResponse(string playerName, IReadOnlyDictionary<string, PlayerStatsPlayerResponse> playersByName, IReadOnlyDictionary<string, string> teamsByPlayerName)
+static LivePlayerResponse ToLivePlayerResponse(
+    string playerName,
+    IReadOnlyDictionary<string, PlayerStatsPlayerResponse> playersByName,
+    IReadOnlyDictionary<string, string> teamsByPlayerName,
+    IReadOnlyDictionary<string, int> pointMultipliers)
 {
     if (playersByName.TryGetValue(playerName, out var statsPlayer))
     {
-        return new LivePlayerResponse(playerName, statsPlayer.TeamName, statsPlayer.Categories);
+        return new LivePlayerResponse(playerName, statsPlayer.TeamName, WithStatPoints(statsPlayer.Categories, pointMultipliers));
     }
 
     return new LivePlayerResponse(playerName, teamsByPlayerName.GetValueOrDefault(playerName), []);
 }
+
+static IReadOnlyList<PlayerStatCategoryResponse> WithStatPoints(IReadOnlyList<PlayerStatCategoryResponse> categories, IReadOnlyDictionary<string, int> pointMultipliers) =>
+    categories
+        .Select(category => category with
+        {
+            Stats = category.Stats.Select(stat => stat with { Points = LiveStatPoints(stat, pointMultipliers) }).ToArray()
+        })
+        .ToArray();
 
 static int LivePlayerPoints(PlayerStatsPlayerResponse player, IReadOnlyDictionary<string, int> pointMultipliers) =>
     player.Categories
@@ -1160,7 +1174,10 @@ static int LivePlayerPoints(PlayerStatsPlayerResponse player, IReadOnlyDictionar
         .Sum(stat => LiveStatPoints(stat, pointMultipliers));
 
 static int LiveStatPoints(PlayerStatResponse stat, IReadOnlyDictionary<string, int> pointMultipliers) =>
-    NumericStatValue(stat.Value) * pointMultipliers.GetValueOrDefault(stat.Key, 0);
+    CalculateLiveStatPoints(stat.Value, stat.Key, pointMultipliers);
+
+static int CalculateLiveStatPoints(object? value, string statKey, IReadOnlyDictionary<string, int> pointMultipliers) =>
+    NumericStatValue(value) * pointMultipliers.GetValueOrDefault(statKey, 0);
 
 static int NumericStatValue(object? value)
 {

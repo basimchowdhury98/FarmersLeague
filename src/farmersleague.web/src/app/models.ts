@@ -110,6 +110,7 @@ export type PlayerStat = {
   value: unknown;
   total: unknown;
   type: string | null;
+  points: number;
 };
 
 export type DraftPickFlight = {
