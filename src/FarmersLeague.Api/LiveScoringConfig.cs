@@ -1,4 +1,4 @@
-static class LiveScoringConfig
+public static class LiveScoringConfig
 {
     public static readonly IReadOnlyDictionary<string, int> PointMultipliers = new Dictionary<string, int>(StringComparer.Ordinal)
     {
@@ -8,35 +8,35 @@ static class LiveScoringConfig
         ["total_shots"] = 0,
         ["ShotsOnTarget"] = 3,
         ["touches_opp_box"] = 1,
-        ["dribbles_succeeded"] = 1,
+        ["dribbles_succeeded"] = 2,
         ["big_chance_missed_title"] = -3,
         ["touches"] = 0,
         ["accurate_passes"] = 0,
-        ["assists"] = 0,
+        ["assists"] = 10,
         ["expected_assists"] = 0,
         ["chances_created"] = 3,
-        ["passes_into_final_third"] = 0,
+        ["passes_into_final_third"] = 1,
         ["accurate_crosses"] = 1,
-        ["long_balls_accurate"] = 0,
+        ["long_balls_accurate"] = 1,
         ["defensive_actions"] = 0,
-        ["matchstats.headers.tackles"] = 0,
+        ["matchstats.headers.tackles"] = 1,
         ["shot_blocks"] = 3,
-        ["recoveries"] = 0,
+        ["recoveries"] = 1,
         ["clearances"] = 1,
         ["headed_clearance"] = 1,
         ["interceptions"] = 1,
-        ["dribbled_past"] = -3,
-        ["duel_won"] = 0,
-        ["duel_lost"] = 0,
-        ["ground_duels_won"] = 0,
-        ["aerials_won"] = 0,
+        ["dribbled_past"] = -2,
+        ["duel_won"] = 2,
+        ["duel_lost"] = -2,
+        ["ground_duels_won"] = 2,
+        ["aerials_won"] = 2,
         ["fouls"] = 0,
         ["was_fouled"] = 0,
         ["saves"] = 3,
         ["goals_conceded"] = 0,
         ["expected_goals_on_target_faced"] = 0,
-        ["goals_prevented"] = 0,
-        ["keeper_sweeper"] = 0,
-        ["keeper_high_claim"] = 0
+        ["goals_prevented"] = 10,
+        ["keeper_sweeper"] = 3,
+        ["keeper_high_claim"] = 2
     };
 }

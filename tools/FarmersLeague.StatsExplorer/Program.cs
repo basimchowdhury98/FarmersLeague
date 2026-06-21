@@ -46,26 +46,40 @@ if (completed is null)
     return;
 }
 
-RenderGameSummary(completed);
-RenderSquads(completed);
-var playerRows = completed.AllPlayerStats
-    .Select(player => PlayerPoints.From(player, completed.PointsConfig))
-    .OrderByDescending(player => player.TotalPoints)
-    .ThenBy(player => player.Player.TeamName, StringComparer.Ordinal)
-    .ThenBy(player => player.Player.Name, StringComparer.Ordinal)
-    .ToArray();
+var scoringConfigSource = options.UseCurrentScoringConfig ? ScoringConfigSource.Current : ScoringConfigSource.Stored;
+var showResults = true;
 
-RenderLeaderboard(playerRows);
-
-while (playerRows.Length > 0 && AnsiConsole.Confirm("Show a player's stat breakdown?", false))
+while (showResults)
 {
-    var selectedPlayer = AnsiConsole.Prompt(
-        new SelectionPrompt<PlayerPoints>()
-            .Title("Select player")
-            .PageSize(20)
-            .UseConverter(player => $"{player.Player.Name} ({player.Player.TeamName}) - {player.TotalPoints} pts")
-            .AddChoices(playerRows));
-    RenderPlayerBreakdown(selectedPlayer);
+    var activePointsConfig = PointsConfigFor(completed, scoringConfigSource);
+    var playerRows = CalculatePlayerRows(completed, activePointsConfig);
+
+    RenderGameSummary(completed, activePointsConfig, scoringConfigSource);
+    RenderSquads(completed, playerRows, scoringConfigSource);
+    RenderLeaderboard(playerRows);
+
+    var action = SelectExplorerAction(playerRows, scoringConfigSource);
+    switch (action)
+    {
+        case ExplorerAction.ShowPlayerBreakdown:
+            var selectedPlayer = AnsiConsole.Prompt(
+                new SelectionPrompt<PlayerPoints>()
+                    .Title("Select player")
+                    .PageSize(20)
+                    .UseConverter(player => $"{player.Player.Name} ({player.Player.TeamName}) - {player.TotalPoints} pts")
+                    .AddChoices(playerRows));
+            RenderPlayerBreakdown(selectedPlayer);
+            break;
+        case ExplorerAction.UseCurrentScoringConfig:
+            scoringConfigSource = ScoringConfigSource.Current;
+            break;
+        case ExplorerAction.ResetToStoredScoringConfig:
+            scoringConfigSource = ScoringConfigSource.Stored;
+            break;
+        case ExplorerAction.Exit:
+            showResults = false;
+            break;
+    }
 }
 
 static CompletedGameKey[] ListCompletedGames(ConnectionMultiplexer redis, string instanceName)
@@ -136,7 +150,22 @@ static string GameLabel(CompletedGameKey game, IReadOnlyDictionary<int, CachedHo
     return $"{match.Id} - {match.HomeTeam} vs {match.AwayTeam}{score} ({match.Date.LocalDateTime:g})";
 }
 
-static void RenderGameSummary(CompletedLiveMatchResult completed)
+static IReadOnlyDictionary<string, int> PointsConfigFor(CompletedLiveMatchResult completed, ScoringConfigSource scoringConfigSource) =>
+    scoringConfigSource switch
+    {
+        ScoringConfigSource.Current => LiveScoringConfig.PointMultipliers,
+        _ => completed.PointsConfig
+    };
+
+static PlayerPoints[] CalculatePlayerRows(CompletedLiveMatchResult completed, IReadOnlyDictionary<string, int> pointsConfig) =>
+    completed.AllPlayerStats
+        .Select(player => PlayerPoints.From(player, pointsConfig))
+        .OrderByDescending(player => player.TotalPoints)
+        .ThenBy(player => player.Player.TeamName, StringComparer.Ordinal)
+        .ThenBy(player => player.Player.Name, StringComparer.Ordinal)
+        .ToArray();
+
+static void RenderGameSummary(CompletedLiveMatchResult completed, IReadOnlyDictionary<string, int> pointsConfig, ScoringConfigSource scoringConfigSource)
 {
     var table = new Table().Title("Game").RoundedBorder();
     table.AddColumn("Field");
@@ -147,27 +176,69 @@ static void RenderGameSummary(CompletedLiveMatchResult completed)
     table.AddRow("Score", completed.Match.Score ?? "-");
     table.AddRow("Finalized", completed.FinalizedAt.LocalDateTime.ToString("g", CultureInfo.CurrentCulture));
     table.AddRow("Players", completed.AllPlayerStats.Count.ToString(CultureInfo.InvariantCulture));
-    table.AddRow("Point Config Entries", completed.PointsConfig.Count.ToString(CultureInfo.InvariantCulture));
+    table.AddRow("Scoring Config", ScoringConfigSourceLabel(scoringConfigSource));
+    table.AddRow("Point Config Entries", pointsConfig.Count.ToString(CultureInfo.InvariantCulture));
     AnsiConsole.Write(table);
 }
 
-static void RenderSquads(CompletedLiveMatchResult completed)
+static void RenderSquads(CompletedLiveMatchResult completed, IReadOnlyList<PlayerPoints> playerRows, ScoringConfigSource scoringConfigSource)
 {
-    var table = new Table().Title("Squads").RoundedBorder();
+    var squadTotals = completed.Squads
+        .Select(squad => new LiveSquadFinalScoreResponse(
+            squad.UserName,
+            playerRows.Where(player => string.Equals(player.Player.DraftedBy, squad.UserName, StringComparison.Ordinal)).Sum(player => player.TotalPoints)))
+        .ToArray();
+    var highScore = squadTotals.Length == 0 ? 0 : squadTotals.Max(squad => squad.TotalPoints);
+
+    var table = new Table().Title($"Squads - {ScoringConfigSourceLabel(scoringConfigSource)}").RoundedBorder();
     table.AddColumn("User");
     table.AddColumn(new TableColumn("Total").RightAligned());
     table.AddColumn("Winner");
 
-    foreach (var squad in completed.Squads.OrderByDescending(squad => squad.TotalPoints).ThenBy(squad => squad.UserName, StringComparer.Ordinal))
+    foreach (var squad in squadTotals.OrderByDescending(squad => squad.TotalPoints).ThenBy(squad => squad.UserName, StringComparer.Ordinal))
     {
         table.AddRow(
             Markup.Escape(squad.UserName),
             squad.TotalPoints.ToString(CultureInfo.InvariantCulture),
-            completed.Winners.Contains(squad.UserName, StringComparer.Ordinal) ? "yes" : string.Empty);
+            squad.TotalPoints == highScore ? "yes" : string.Empty);
     }
 
     AnsiConsole.Write(table);
 }
+
+static ExplorerAction SelectExplorerAction(IReadOnlyList<PlayerPoints> playerRows, ScoringConfigSource scoringConfigSource)
+{
+    var actions = new List<ExplorerAction>();
+    if (playerRows.Count > 0)
+    {
+        actions.Add(ExplorerAction.ShowPlayerBreakdown);
+    }
+
+    actions.Add(scoringConfigSource == ScoringConfigSource.Stored
+        ? ExplorerAction.UseCurrentScoringConfig
+        : ExplorerAction.ResetToStoredScoringConfig);
+    actions.Add(ExplorerAction.Exit);
+
+    return AnsiConsole.Prompt(
+        new SelectionPrompt<ExplorerAction>()
+            .Title("Next action")
+            .UseConverter(ExplorerActionLabel)
+            .AddChoices(actions));
+}
+
+static string ExplorerActionLabel(ExplorerAction action) => action switch
+{
+    ExplorerAction.ShowPlayerBreakdown => "Show a player's stat breakdown",
+    ExplorerAction.UseCurrentScoringConfig => "Use current LiveScoringConfig",
+    ExplorerAction.ResetToStoredScoringConfig => "Reset to stored scoring config",
+    _ => "Exit"
+};
+
+static string ScoringConfigSourceLabel(ScoringConfigSource scoringConfigSource) => scoringConfigSource switch
+{
+    ScoringConfigSource.Current => "Current LiveScoringConfig",
+    _ => "Stored completed-match config"
+};
 
 static void RenderLeaderboard(IReadOnlyList<PlayerPoints> playerRows)
 {
@@ -231,13 +302,14 @@ static string RedactRedisConnectionString(string connectionString)
     return string.Join(',', parts);
 }
 
-sealed record ExplorerOptions(string? RedisConnectionString, string InstanceName, int? GameId)
+sealed record ExplorerOptions(string? RedisConnectionString, string InstanceName, int? GameId, bool UseCurrentScoringConfig)
 {
     public static ExplorerOptions Parse(string[] args)
     {
         string? redisConnectionString = null;
         var instanceName = "FarmersLeague:";
         int? gameId = null;
+        var useCurrentScoringConfig = false;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -252,16 +324,33 @@ sealed record ExplorerOptions(string? RedisConnectionString, string InstanceName
                 case "--game" when index + 1 < args.Length && int.TryParse(args[++index], out var parsedGameId):
                     gameId = parsedGameId;
                     break;
+                case "--current-scoring-config":
+                    useCurrentScoringConfig = true;
+                    break;
                 case "--help":
                 case "-h":
-                    AnsiConsole.WriteLine("Usage: dotnet run --project tools/FarmersLeague.StatsExplorer -- [--redis <connection-string>] [--instance FarmersLeague:] [--game <match-id>]");
+                    AnsiConsole.WriteLine("Usage: dotnet run --project tools/FarmersLeague.StatsExplorer -- [--redis <connection-string>] [--instance FarmersLeague:] [--game <match-id>] [--current-scoring-config]");
                     Environment.Exit(0);
                     break;
             }
         }
 
-        return new ExplorerOptions(redisConnectionString, instanceName, gameId);
+        return new ExplorerOptions(redisConnectionString, instanceName, gameId, useCurrentScoringConfig);
     }
+}
+
+enum ScoringConfigSource
+{
+    Stored,
+    Current
+}
+
+enum ExplorerAction
+{
+    ShowPlayerBreakdown,
+    UseCurrentScoringConfig,
+    ResetToStoredScoringConfig,
+    Exit
 }
 
 sealed record CompletedGameKey(int MatchId, string RedisKey)

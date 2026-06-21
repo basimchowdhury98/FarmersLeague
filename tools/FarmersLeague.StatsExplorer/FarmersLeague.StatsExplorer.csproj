@@ -12,4 +12,8 @@
     <PackageReference Include="StackExchange.Redis" Version="2.8.58" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../../src/FarmersLeague.Api/FarmersLeague.Api.csproj" />
+  </ItemGroup>
+
 </Project>
