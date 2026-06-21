@@ -444,6 +444,10 @@ describe('Live match drafted player stats', () => {
           body.squads.forEach((squad) => {
             expect(shareText).to.contain(`${squad.userName}: ${squad.totalPoints} pts`);
           });
+          completedPicks().forEach((pick) => {
+            expect(shareText).to.contain(`- ${pick.playerName}:`);
+            expect(shareText).to.contain(' pts');
+          });
         });
       });
     });

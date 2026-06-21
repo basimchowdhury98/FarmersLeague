@@ -578,7 +578,17 @@ export class App {
     }
 
     const scores = finalResult.squads
-      .map((squad) => `${squad.userName}: ${squad.totalPoints} pts`)
+      .map((finalSquad) => {
+        const squad = liveMatch.squads.find((liveSquad) => liveSquad.userName === finalSquad.userName);
+        const playerScores = squad?.players
+          .map((player) => `  - ${player.name}: ${this.livePlayerPoints(player)} pts`)
+          .join('\n');
+
+        return [
+          `${finalSquad.userName}: ${finalSquad.totalPoints} pts`,
+          playerScores
+        ].filter(Boolean).join('\n');
+      })
       .join('\n');
 
     return `Farmers League final: ${liveMatch.match.homeTeam} vs ${liveMatch.match.awayTeam}\n${this.liveMatchWinnerText()}\n\nFinal scores:\n${scores}`;
