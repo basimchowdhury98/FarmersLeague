@@ -408,10 +408,25 @@ describe('Live match drafted player stats', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
 
-    cy.visit(livePath(alicePasskey));
+    cy.visit(livePath(alicePasskey), {
+      onBeforeLoad(win) {
+        win.__copiedLiveMatchShareText = '';
+        Object.defineProperty(win.navigator, 'clipboard', {
+          configurable: true,
+          value: {
+            writeText(text) {
+              win.__copiedLiveMatchShareText = text;
+              return Promise.resolve();
+            }
+          }
+        });
+      }
+    });
 
     cy.testGet('live-match-result').should('be.visible').and('contain.text', 'Final result');
     cy.testGet('live-match-winner').should('be.visible').and('contain.text', 'Winner');
+    cy.testGet('live-match-share-button').should('be.visible').and('contain.text', 'Copy final scores').click();
+    cy.testGet('live-match-share-status').should('be.visible').and('contain.text', 'Copied brag to clipboard');
     cy.testGet('live-squad').each(($squad) => {
       cy.wrap($squad).find('[data-test="live-squad-final-points"]').should('contain.text', 'pts');
     });
@@ -422,6 +437,13 @@ describe('Live match drafted player stats', () => {
         body.squads.forEach((squad) => {
           expect(pageText).to.contain(squad.userName);
           expect(pageText).to.contain(`${squad.totalPoints} pts`);
+        });
+        cy.window().its('__copiedLiveMatchShareText').then((shareText) => {
+          expect(shareText).to.contain(`Farmers League final: ${match.homeTeam} vs ${match.awayTeam}`);
+          body.winners.forEach((winner) => expect(shareText).to.contain(winner));
+          body.squads.forEach((squad) => {
+            expect(shareText).to.contain(`${squad.userName}: ${squad.totalPoints} pts`);
+          });
         });
       });
     });
@@ -632,6 +654,7 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-match-page').should('be.visible');
     cy.testGet('live-squad-points').should('have.length', 2).and('contain.text', 'pts');
     cy.testGet('live-match-result').should('not.exist');
+    cy.testGet('live-match-share-button').should('not.exist');
     cy.request({
       url: `/api/testing/live-matches/${match.id}/completed`,
       failOnStatusCode: false

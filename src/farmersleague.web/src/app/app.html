@@ -137,12 +137,18 @@
           </div>
 
           @if (liveState.finalResult) {
-            <section class="live-match-result" data-test="live-match-result" aria-label="Final match result">
+            <section class="live-match-result live-tracker-squad" data-test="live-match-result" aria-label="Final match result">
               <p class="eyebrow">Final result</p>
               <h2 data-test="live-match-winner">{{ liveMatchWinnerText() }}</h2>
               @if (liveState.finalResult.winners.length > 1) {
                 <p data-test="live-match-tie-winners">{{ liveState.finalResult.winners.join(', ') }}</p>
               }
+              <div class="draft-lobby">
+                <button type="button" data-test="live-match-share-button" (click)="shareLiveMatchResult()">Copy final scores</button>
+                @if (liveMatchShareStatus()) {
+                  <p data-test="live-match-share-status" aria-live="polite">{{ liveMatchShareStatus() }}</p>
+                }
+              </div>
             </section>
           }
 

@@ -46,6 +46,7 @@ export class App {
   protected readonly liveMatchUnavailable = signal('');
   protected readonly liveMatchLiveError = signal('');
   protected readonly liveFeedPulseActive = signal(false);
+  protected readonly liveMatchShareStatus = signal('');
   protected readonly selectedLivePlayer = signal<LivePlayer | null>(null);
   protected readonly livePointChanges = signal<LivePointChange[]>([]);
   protected readonly draftError = signal('');
@@ -567,6 +568,35 @@ export class App {
     }
 
     return `Tie: ${winners.join(', ')}`;
+  }
+
+  protected liveMatchShareText() {
+    const liveMatch = this.liveMatch();
+    const finalResult = liveMatch?.finalResult;
+    if (!liveMatch || !finalResult) {
+      return '';
+    }
+
+    const scores = finalResult.squads
+      .map((squad) => `${squad.userName}: ${squad.totalPoints} pts`)
+      .join('\n');
+
+    return `Farmers League final: ${liveMatch.match.homeTeam} vs ${liveMatch.match.awayTeam}\n${this.liveMatchWinnerText()}\n\nFinal scores:\n${scores}`;
+  }
+
+  protected async shareLiveMatchResult() {
+    const shareText = this.liveMatchShareText();
+    if (!shareText || !navigator.clipboard?.writeText) {
+      this.liveMatchShareStatus.set('Clipboard unavailable');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      this.liveMatchShareStatus.set('Copied brag to clipboard');
+    } catch {
+      this.liveMatchShareStatus.set('Clipboard unavailable');
+    }
   }
 
   protected liveStatPoints(stat: PlayerStat) {
