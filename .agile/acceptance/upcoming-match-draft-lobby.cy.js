@@ -160,9 +160,27 @@ describe('Upcoming match draft lobby', () => {
     matchCard().within(() => cy.testGet('create-draft-button').click());
   };
 
+  const showMatchDateTab = () => {
+    const matchDate = new Date(match.date);
+    const today = new Date();
+    const matchDay = new Date(matchDate.getFullYear(), matchDate.getMonth(), matchDate.getDate()).getTime();
+    const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+
+    if (matchDay > todayDay) {
+      cy.testGet('upcoming-matches-tab').click();
+    } else if (matchDay < todayDay) {
+      cy.testGet('past-matches-tab').click();
+    }
+  };
+
   beforeEach(() => {
+    cy.resetScraperMatches();
     loadDraftableMatch();
     cy.then(() => cy.request('DELETE', `/api/testing/drafts/${match.id}`).its('status').should('equal', 204));
+  });
+
+  afterEach(() => {
+    cy.resetScraperMatches();
   });
 
   it('shows upcoming matches with their teams and kickoff time on the user home page', () => {
@@ -175,10 +193,11 @@ describe('Upcoming match draft lobby', () => {
   });
 
   // GIVEN Alice is an admin and an upcoming match has no draft yet
-  // WHEN Alice clicks that match's Create draft button
+  // WHEN Alice clicks that match card
   // THEN a draft is created, Alice is joined, and she is navigated to the draft page
-  it('allows an admin to create a draft with Alice joined and navigates her to the draft page', () => {
-    createDraftFromHome();
+  it('allows an admin to create a draft from the match card with Alice joined and navigates her to the draft page', () => {
+    cy.visit(`/${alicePasskey}`);
+    matchCard().click();
 
     cy.location('pathname').should('equal', `/${alicePasskey}/matches/${match.id}/draft`);
     cy.testGet('draft-page').should('be.visible');
@@ -187,15 +206,17 @@ describe('Upcoming match draft lobby', () => {
   });
 
   // GIVEN Bob is a regular user and an upcoming match has no draft yet
-  // WHEN Bob opens the home page
-  // THEN he does not see the Create draft button
-  it('does not show regular users the create draft action', () => {
+  // WHEN Bob opens the home page and clicks the match card
+  // THEN he does not see draft creation controls and remains on the home page
+  it('locks regular users out of match cards without drafts', () => {
     cy.visit(`/${bobPasskey}`);
 
     matchCard().within(() => {
       cy.testGet('match-draft-status').should('contain.text', 'No draft yet');
       cy.testGet('create-draft-button').should('not.exist');
     });
+    matchCard().should('have.class', 'match-locked').and('have.attr', 'aria-disabled', 'true').click();
+    cy.location('pathname').should('equal', `/${bobPasskey}`);
   });
 
   it('shows draft creation without embedding lineups in the match list', () => {
@@ -253,11 +274,32 @@ describe('Upcoming match draft lobby', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
 
     cy.visit(`/${bobPasskey}`);
-    matchCard().within(() => cy.testGet('join-draft-button').click());
+    matchCard().click();
 
     cy.location('pathname').should('equal', `/${bobPasskey}/matches/${match.id}/draft`);
     cy.testGet('draft-page').should('be.visible');
     cy.testGet('draft-status').should('contain.text', 'Draft open');
+    cy.testGet('draft-joined-users').should('contain.text', 'Alice').and('contain.text', 'Bob');
+  });
+
+  it('keeps the Join draft button available when a regular user can also join by clicking the card', () => {
+    setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+
+    cy.visit(`/${bobPasskey}`);
+
+    matchCard().within(() => {
+      cy.testGet('join-draft-button').should('be.visible').and('contain.text', 'Join draft');
+    });
+  });
+
+  it('reopens an open draft from the match card when the current user has already joined', () => {
+    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+
+    cy.visit(`/${alicePasskey}`);
+    matchCard().click();
+
+    cy.location('pathname').should('equal', `/${alicePasskey}/matches/${match.id}/draft`);
+    cy.testGet('draft-page').should('be.visible');
     cy.testGet('draft-joined-users').should('contain.text', 'Alice').and('contain.text', 'Bob');
   });
 
@@ -567,6 +609,31 @@ describe('Upcoming match draft lobby', () => {
       cy.testGet('cancel-draft-button').should('not.exist');
       cy.testGet('start-draft-button').should('not.exist');
     });
+  });
+
+  it('opens the live match page from a completed draft card', () => {
+    setDraft({ status: 'completed', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: completedPicks });
+
+    cy.visit(`/${bobPasskey}`);
+    matchCard().click();
+
+    cy.location('pathname').should('equal', `/${bobPasskey}/matches/${match.id}/live`);
+    cy.testGet('live-match-page').should('be.visible');
+  });
+
+  it('opens the live match results page from a completed draft card after the match ends', () => {
+    setDraft({ status: 'completed', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: completedPicks });
+    cy.setScraperMatchStatus(match.id, { started: true, finished: true });
+    cy.request('POST', '/api/testing/live-matches/finalize-completed')
+      .its('status')
+      .should('equal', 204);
+
+    cy.visit(`/${bobPasskey}`);
+    showMatchDateTab();
+    matchCard().click();
+
+    cy.location('pathname').should('equal', `/${bobPasskey}/matches/${match.id}/live`);
+    cy.testGet('live-match-result').should('be.visible').and('contain.text', 'Final result');
   });
 
   // GIVEN the local clock is past kickoff but the scraper still says the match has not started

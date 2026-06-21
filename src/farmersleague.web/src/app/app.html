@@ -62,7 +62,16 @@
         }
 
         @for (match of visibleMatches(); track match.id) {
-          <article class="match" data-test="match-card" (click)="openMatch(match)">
+          <article
+            class="match"
+            data-test="match-card"
+            [class.match-locked]="!canOpenMatch(match)"
+            [attr.aria-disabled]="!canOpenMatch(match) ? 'true' : null"
+            [attr.role]="canOpenMatch(match) ? 'button' : null"
+            [attr.tabindex]="canOpenMatch(match) ? '0' : null"
+            (click)="openMatch(match)"
+            (keydown)="openMatchWithKeyboard(match, $event)"
+          >
             <span class="league" data-test="match-league">{{ match.league }}</span>
             <span class="team-side team-side-home">
               <span class="team-badge">{{ teamInitials(match.homeTeam) }}</span>

@@ -163,6 +163,11 @@ app-root {
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 8%), 0 12px 26px rgb(0 0 0 / 22%);
 }
 
+.match.match-locked {
+  cursor: default;
+  opacity: 0.68;
+}
+
 .match + .match {
   margin-top: 0.42rem;
 }

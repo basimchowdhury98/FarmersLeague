@@ -188,16 +188,35 @@ export class App {
   }
 
   protected openMatch(match: MatchResponse) {
-    if (this.hasMatchStarted(match) && !this.hasMatchFinished(match)) {
+    if (!this.canOpenMatch(match)) {
+      return;
+    }
+
+    if (this.hasCompletedDraft(match)) {
       this.switchToLiveMatch(match.id);
       return;
     }
 
-    if (!this.canOpenDraft(match)) {
+    if (match.draft) {
+      if (this.canJoinDraft(match)) {
+        this.joinDraft(match);
+        return;
+      }
+
+      this.openDraft(match);
       return;
     }
 
-    this.openDraft(match);
+    this.createDraft(match);
+  }
+
+  protected openMatchWithKeyboard(match: MatchResponse, event: KeyboardEvent) {
+    if (event.key !== 'Enter' && event.key !== ' ') {
+      return;
+    }
+
+    event.preventDefault();
+    this.openMatch(match);
   }
 
   private openDraft(match: MatchResponse) {
@@ -307,6 +326,10 @@ export class App {
     return this.canManageDraftLifecycle() && !this.hasMatchStartedOrFinished(match) && !!match.draft && !match.draft.isComplete && match.draft.status !== 'completed';
   }
 
+  protected canOpenMatch(match: MatchResponse) {
+    return this.hasCompletedDraft(match) || !!match.draft || this.canCreateDraft(match);
+  }
+
   protected hasMatchStarted(match: MatchResponse) {
     return match.hasStarted === true;
   }
@@ -320,7 +343,11 @@ export class App {
   }
 
   protected canOpenDraft(match: MatchResponse) {
-    return !this.hasMatchStartedOrFinished(match) || !!match.draft;
+    return !!match.draft || this.canCreateDraft(match);
+  }
+
+  private hasCompletedDraft(match: MatchResponse) {
+    return match.draft?.isComplete === true || match.draft?.status === 'completed';
   }
 
   protected hasConfirmedStartingLineups(match: MatchResponse) {

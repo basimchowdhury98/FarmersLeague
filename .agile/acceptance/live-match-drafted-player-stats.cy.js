@@ -332,8 +332,8 @@ describe('Live match drafted player stats', () => {
 
   // GIVEN a match is ongoing but its draft is not complete
   // WHEN a logged-in user clicks that match card on the home page
-  // THEN they are not shown live match content and see the existing “Match has not started yet” unavailable state
-  it('shows the unavailable live state when an ongoing match is clicked before its draft is complete', () => {
+  // THEN they open the existing draft instead of the live match page
+  it('opens the draft when an ongoing match is clicked before its draft is complete', () => {
     setDraft({
       status: 'started',
       joinedUsers: ['Alice', 'Bob'],
@@ -345,9 +345,9 @@ describe('Live match drafted player stats', () => {
     cy.visit(`/${alicePasskey}`);
     matchCard().click();
 
-    cy.location('pathname').should('equal', livePath(alicePasskey));
-    cy.testGet('live-match-unavailable').should('be.visible').and('contain.text', 'Match has not started yet');
-    cy.testGet('live-match-page').should('not.exist');
+    cy.location('pathname').should('equal', draftPath(alicePasskey));
+    cy.testGet('draft-page').should('be.visible');
+    cy.testGet('draft-status').should('contain.text', 'Draft in progress');
     cy.testGet('live-player-card').should('not.exist');
   });
 
