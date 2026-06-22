@@ -192,9 +192,6 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
-  // GIVEN Alice is an admin and an upcoming match has no draft yet
-  // WHEN Alice clicks that match card
-  // THEN a draft is created, Alice is joined, and she is navigated to the draft page
   it('allows an admin to create a draft from the match card with Alice joined and navigates her to the draft page', () => {
     cy.visit(`/${alicePasskey}`);
     matchCard().click();
@@ -205,9 +202,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('draft-joined-users').should('contain.text', 'Alice');
   });
 
-  // GIVEN Bob is a regular user and an upcoming match has no draft yet
-  // WHEN Bob opens the home page and clicks the match card
-  // THEN he does not see draft creation controls and remains on the home page
   it('locks regular users out of match cards without drafts', () => {
     cy.visit(`/${bobPasskey}`);
 
@@ -236,9 +230,6 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
-  // GIVEN Alice is an admin and an upcoming match has no draft yet, even though its lineup is unavailable
-  // WHEN Alice clicks that match's Create draft button
-  // THEN she is taken to that match's draft page with the draft open and herself joined
   it('creates a draft for an upcoming match before lineups are available', () => {
     loadNoLineupMatch()
       .then(() => {
@@ -254,9 +245,6 @@ describe('Upcoming match draft lobby', () => {
       });
   });
 
-  // GIVEN Bob is a regular user and Alice has created an open draft
-  // WHEN Bob opens the home page
-  // THEN Bob can join the draft but does not receive draft lifecycle controls
   it('shows Bob an open draft with a join action after Alice creates it', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
 
@@ -323,9 +311,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('start-draft-button').should('be.visible').and('not.be.disabled');
   });
 
-  // GIVEN Bob is a regular user and an open draft has at least two joined users with lineups available
-  // WHEN Bob opens the draft page
-  // THEN he does not see the Start draft button
   it('does not show regular users the start draft action', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -336,9 +321,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('start-draft-button').should('not.exist');
   });
 
-  // GIVEN Alice is an admin, an open draft has at least two joined users, and the scraper returns starting 11 plus bench for both teams
-  // WHEN Alice opens the draft page
-  // THEN the Start draft button is enabled and the starting 11 players are shown as draftable
   it('enables starting a draft when enough users have joined and lineups are available', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -348,9 +330,6 @@ describe('Upcoming match draft lobby', () => {
     cy.get('[data-test="draft-player"]').should('have.length', 22);
   });
 
-  // GIVEN an open draft has at least two joined users but the scraper returns 404 for that match's lineup
-  // WHEN a joined user opens the draft page
-  // THEN a lineup-unavailable banner explains that the draft cannot start until the starting lineup is available and Start draft is disabled
   it('blocks starting a draft when the lineup is unavailable', () => {
     loadNoLineupMatch()
       .then(() => {
@@ -364,9 +343,6 @@ describe('Upcoming match draft lobby', () => {
       });
   });
 
-  // GIVEN an open draft has at least two joined users but the Preview tab lineup is marked as predicted
-  // WHEN a joined user opens the draft page
-  // THEN the lineup-unavailable banner uses the current unavailable-lineup message, Start draft is disabled, and no draftable players are shown
   it('treats a predicted Preview tab lineup as unavailable on the draft page', () => {
     loadPredictedLineupMatch()
       .then(() => {
@@ -383,9 +359,6 @@ describe('Upcoming match draft lobby', () => {
       });
   });
 
-  // GIVEN an open draft has only one joined user and the scraper returns 404 for that match's lineup
-  // WHEN that joined user opens the draft page
-  // THEN both the lineup-unavailable banner and the existing at-least-two-users warning are visible, and Start draft is disabled
   it('shows both lineup and minimum-player warnings when both requirements are unmet', () => {
     loadNoLineupMatch()
       .then(() => {
@@ -399,9 +372,6 @@ describe('Upcoming match draft lobby', () => {
       });
   });
 
-  // GIVEN an open draft exists for a match whose lineup is unavailable
-  // WHEN another logged-in user opens the home page
-  // THEN they can still join the draft lobby
   it('allows users to join a draft lobby before lineups are available', () => {
     loadNoLineupMatch()
       .then(() => {
@@ -417,9 +387,6 @@ describe('Upcoming match draft lobby', () => {
       });
   });
 
-  // GIVEN the scraper mock match has no lineup available
-  // WHEN a logged-in user opens that match's draft page
-  // THEN no draftable player list is shown
   it('hides the draftable player list when the lineup is unavailable', () => {
     loadNoLineupMatch()
       .then(() => {
@@ -433,9 +400,6 @@ describe('Upcoming match draft lobby', () => {
       });
   });
 
-  // GIVEN Alice is an admin and an open draft has at least two joined users with lineups available
-  // WHEN Alice clicks Start draft and chooses Round robin
-  // THEN the draft starts with a randomized joined-user order repeated for 3 picks per user
   it('allows an admin to start a round robin draft with a repeated randomized joined-user order', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -456,9 +420,6 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
-  // GIVEN Alice is an admin and an open draft has Alice and Bob joined with lineups available
-  // WHEN Alice clicks Start draft and chooses ABBA
-  // THEN the draft starts with the randomized joined-user order alternating forward and backward each round for 3 picks per user
   it('allows an admin to start a two-user ABBA draft order', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -473,9 +434,6 @@ describe('Upcoming match draft lobby', () => {
     assertTwoUserAbbaQueue();
   });
 
-  // GIVEN Alice is an admin and an open draft has Alice, Bob, and Carol joined with lineups available
-  // WHEN Alice clicks Start draft and chooses ABBA
-  // THEN the draft starts with the randomized joined-user order alternating forward, backward, and forward for 3 picks per user
   it('allows an admin to start a three-user ABBA draft order', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob', 'Carol'], draftOrder: [], picks: [] });
 
@@ -490,9 +448,6 @@ describe('Upcoming match draft lobby', () => {
     assertThreeUserAbbaQueue();
   });
 
-  // GIVEN Alice is an admin and an open draft has at least two joined users with lineups available
-  // WHEN Alice clicks Start draft and cancels the draft-order popup
-  // THEN the draft remains open and no draft order is created
   it('keeps the draft open when an admin cancels the draft order mode popup', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -519,9 +474,6 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
-  // GIVEN Alice is an admin and a draft exists with drafted decisions
-  // WHEN Alice cancels the draft
-  // THEN the draft is reset and previous drafted decisions are cleared
   it('allows an admin to cancel a draft and clear drafted decisions', () => {
     setDraft({
       status: 'started',
@@ -544,9 +496,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('draft-joined-users').should('contain.text', 'Alice');
   });
 
-  // GIVEN Bob is a regular user and a draft exists
-  // WHEN Bob opens the home page
-  // THEN he does not see the Cancel draft button
   it('does not show regular users the cancel draft action', () => {
     setDraft({ status: 'started', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: [] });
 
@@ -558,9 +507,6 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
-  // GIVEN Bob is a regular user and an upcoming match has no draft yet
-  // WHEN Bob directly calls the create draft API
-  // THEN the API rejects the request with 403 Forbidden
   it('rejects regular user draft creation through the API', () => {
     cy.request({
       method: 'POST',
@@ -570,9 +516,6 @@ describe('Upcoming match draft lobby', () => {
     }).its('status').should('equal', 403);
   });
 
-  // GIVEN Bob is a regular user and an open draft has at least two joined users
-  // WHEN Bob directly calls the start draft API
-  // THEN the API rejects the request with 403 Forbidden
   it('rejects regular user draft start through the API', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -584,9 +527,6 @@ describe('Upcoming match draft lobby', () => {
     }).its('status').should('equal', 403);
   });
 
-  // GIVEN Bob is a regular user and a draft exists
-  // WHEN Bob directly calls the cancel draft API
-  // THEN the API rejects the request with 403 Forbidden
   it('rejects regular user draft cancellation through the API', () => {
     setDraft({ status: 'started', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: [] });
 
@@ -636,9 +576,6 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('live-match-result').should('be.visible').and('contain.text', 'Final result');
   });
 
-  // GIVEN the local clock is past kickoff but the scraper still says the match has not started
-  // WHEN Alice opens the home page
-  // THEN draft actions remain based on the scraper status rather than the local kickoff time
   it('keeps draft actions available after kickoff time until the scraper says the match has started', () => {
     cy.clock(new Date(match.date).getTime() + 60 * 1000, ['Date']);
 

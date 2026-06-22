@@ -103,9 +103,6 @@ describe('Draft match start cutoff', () => {
     cy.request('DELETE', `/api/testing/drafts/${incompleteBenchMatchId}`).its('status').should('equal', 204);
   });
 
-  // GIVEN an upcoming match from the scraper has not started or finished and no draft exists
-  // WHEN an admin views the home page
-  // THEN the match shows a Create draft action
   it('shows a create draft action for an unstarted match', () => {
     cy.visit(`/${alicePasskey}`);
 
@@ -115,9 +112,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN an upcoming match has Preview tab lineup data that is not predicted, confirmed starting 11s for both teams, an open draft exists, and at least two users have joined
-  // WHEN an admin starts the draft before the scraper says the match has started
-  // THEN the draft starts successfully using the Preview tab lineup
   it('starts a joined draft before the scraper says the match has started', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -127,9 +121,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN a draft is in progress before the scraper says the match has started
-  // WHEN the final pick completes the draft
-  // THEN the draft is completed and the user is taken to the live match
   it('opens the live match when the final pick completes before match start', () => {
     setDraft({
       status: 'started',
@@ -145,9 +136,6 @@ describe('Draft match start cutoff', () => {
     cy.testGet('live-match-page').should('be.visible');
   });
 
-  // GIVEN the scraper all-matches response says a match has started
-  // WHEN an admin views the home page
-  // THEN the match does not show a Create draft action and indicates that the match is ongoing
   it('hides draft creation and marks a started match as ongoing on the home page', () => {
     cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
     loadMatches();
@@ -160,9 +148,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN the scraper all-matches response says a match has finished
-  // WHEN an admin views the home page
-  // THEN the match does not show a Create draft action and indicates that the match has ended
   it('hides draft creation and marks a finished match as ended on the home page', () => {
     cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
     loadMatches();
@@ -175,9 +160,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN a match has not started but the Preview tab lineup data is absent
-  // WHEN an admin attempts to start its draft
-  // THEN the draft is not started and an error explains that starting lineups are not confirmed
   it('rejects starting a draft before the Preview tab lineup is available', () => {
     setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -192,9 +174,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN a match has not started and the Preview tab lineup data is marked as predicted
-  // WHEN an admin attempts to start its draft
-  // THEN the draft is not started and an error explains that starting lineups are not confirmed
   it('rejects starting a draft while the Preview tab lineup is predicted', () => {
     setPredictedLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -209,9 +188,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN a match has not started and the Preview tab lineup data is not predicted but does not include full benches for both teams
-  // WHEN an admin views the draft and starts it
-  // THEN the draft starts successfully and includes the available bench players
   it('starts a draft when confirmed starters are available without full benches', () => {
     setIncompleteBenchDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
 
@@ -227,9 +203,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN an open draft exists and the scraper now says the match has started
-  // WHEN an admin attempts to start the draft
-  // THEN the draft is not started and an error says “Draft can’t be started since match has started.”
   it('rejects starting an open draft after the scraper says the match has started', () => {
     setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
     cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
@@ -245,9 +218,6 @@ describe('Draft match start cutoff', () => {
     });
   });
 
-  // GIVEN a draft is in progress and the scraper now says the match has started
-  // WHEN a user makes the final pick that would complete the draft
-  // THEN the live match is not created, the draft is deleted, an error says the live match cannot be created since the actual match has started, and the user is routed home
   it('abandons the draft and routes home when the final pick happens after match start', () => {
     setDraft({
       status: 'started',
@@ -269,9 +239,6 @@ describe('Draft match start cutoff', () => {
     }).its('status').should('equal', 400);
   });
 
-  // GIVEN the scraper now says a match has started or finished
-  // WHEN an admin attempts to create a draft for that match through the API
-  // THEN the API rejects the request and no draft is created
   it('rejects creating a draft through the API after the match has started or finished', () => {
     cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
 

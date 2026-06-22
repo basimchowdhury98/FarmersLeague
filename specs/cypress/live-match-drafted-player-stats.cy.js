@@ -138,9 +138,6 @@ describe('Live match drafted player stats', () => {
     cy.resetScraperMatches();
   });
 
-  // GIVEN a drafted player has scraper stats but none of those stats contribute points
-  // WHEN Alice opens that player's live stats popup
-  // THEN she sees a no-contributing-stats message instead of empty stat categories
   it('shows a no scoring stats message when scraper stats do not contribute points', () => {
     setDraft({
       status: 'completed',
@@ -165,9 +162,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN Alice and Bob have an in-progress draft with one pick remaining and Bob has the draft page open
-  // WHEN Bob makes the final pick
-  // THEN Bob is automatically navigated to that match's live page
   it('automatically navigates the user who makes the final pick to the live page', () => {
     startDraftWithOnePickRemaining();
 
@@ -179,9 +173,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-match-title').should('contain.text', matchLabel);
   });
 
-  // GIVEN Alice has an in-progress draft page open and Bob has one pick remaining
-  // WHEN Bob's final pick completes the draft from another session
-  // THEN Alice is also automatically navigated to that match's live page
   it('automatically navigates other users watching the draft when the final pick completes it', () => {
     startDraftWithOnePickRemaining();
 
@@ -195,9 +186,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-match-title').should('contain.text', matchLabel);
   });
 
-  // GIVEN a match has a completed draft and the scraper says the match has started but not finished
-  // WHEN a logged-in user clicks that match card on the home page
-  // THEN they are navigated directly to that match's live page and see the live match content
   it('opens the live match page when a user clicks an ongoing match from the home page', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: false });
@@ -210,9 +198,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-match-title').should('contain.text', matchLabel);
   });
 
-  // GIVEN a user opens a live match page by clicking an ongoing match from the home page
-  // WHEN the live page loads
-  // THEN the page connects to the live updates WebSocket for that match
   it('connects to the live match WebSocket after opening an ongoing match from the home page', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: false });
@@ -226,9 +211,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a draft is complete and Alice opens the live match page
-  // WHEN the page loads
-  // THEN all drafted squads are tracked by user, Alice's squad is first, and the lineup cards mark ownership
   it('shows every drafted squad with the current user first and drafted lineup cards highlighted', () => {
     setDraft({
       status: 'completed',
@@ -254,9 +236,6 @@ describe('Live match drafted player stats', () => {
       .and('contain.text', 'pts');
   });
 
-  // GIVEN a draft is complete and scraper stats are available for drafted players
-  // WHEN Alice opens the live match page
-  // THEN each drafted player shows scoring stat categories and stat fields that contribute points
   it('loads the first scraper stats state and shows scoring stat fields for drafted players', () => {
     completeDraft();
 
@@ -273,9 +252,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a draft is complete and Alice has the live match page open
-  // WHEN she opens a player's live stats popup
-  // THEN the popup shows each contributing stat row's value and points used by the live tracker
   it('shows contributing live stat rows and points in the player popup', () => {
     completeDraft();
 
@@ -291,9 +267,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a drafted player has live stats with both scoring and non-scoring stat rows
-  // WHEN Alice opens that player's live stats popup
-  // THEN only stat rows with a non-zero point contribution are shown
   it('hides stat rows that do not contribute points', () => {
     completeDraft();
 
@@ -312,9 +285,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a draft is not complete
-  // WHEN Alice opens that match's live page directly
-  // THEN she is not shown the live match stats page and sees a message that the match has not started yet
   it('does not show live match stats before the draft is complete', () => {
     setDraft({
       status: 'started',
@@ -330,9 +300,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-player-card').should('not.exist');
   });
 
-  // GIVEN a match is ongoing but its draft is not complete
-  // WHEN a logged-in user clicks that match card on the home page
-  // THEN they open the existing draft instead of the live match page
   it('opens the draft when an ongoing match is clicked before its draft is complete', () => {
     setDraft({
       status: 'started',
@@ -351,9 +318,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-player-card').should('not.exist');
   });
 
-  // GIVEN a draft is complete but a drafted player has no returned scraper stats yet
-  // WHEN Alice opens the live match page
-  // THEN that drafted player is still shown with a no-stats state instead of breaking the page
   it('shows drafted players without scraper stats using a no-stats state', () => {
     setDraft({
       status: 'completed',
@@ -383,9 +347,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a visitor does not have a valid passkey
-  // WHEN they open a match live page directly
-  // THEN they see the existing no-access page instead of live match content
   it('does not show live match content to visitors without a valid passkey', () => {
     setDraft({
       status: 'completed',
@@ -401,9 +362,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-player-card').should('not.exist');
   });
 
-  // GIVEN a draft is complete, the scraper says the match has finished, and final player stats are available
-  // WHEN Alice opens that match's live page
-  // THEN the page shows the completed match result, each drafted squad's final total, and the winning user based on drafted players' points
   it('shows the completed match winner and final squad totals after the scraper marks the match finished', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
@@ -453,9 +411,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a draft is complete and the live match has started
-  // WHEN the scraper marks the match finished and the background finalization job runs
-  // THEN Redis stores a completed match result containing match teams, final score, winners, squad totals, drafted ownership indicators, all player stats, every player's calculated points, and the scoring config snapshot
   it('archives a finished drafted live match from the background job with all player stats and ownership indicators', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true, score: '2 - 1' });
@@ -483,9 +438,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN the completed match archive includes drafted and undrafted player stats
-  // WHEN the background finalization job stores the completed result in Redis
-  // THEN each archived all-player total is calculated with the same scoring config used for the final squad totals
   it('stores calculated point totals for every archived player using the scoring config snapshot', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
@@ -512,9 +464,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a completed match result has been finalized with drafted and undrafted player stats
-  // WHEN the frontend requests the live match page data
-  // THEN the API response includes only drafted players' stats and does not include the all-player archive or undrafted player totals
   it('does not send undrafted player stats to the frontend live match response', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
@@ -532,9 +481,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a completed drafted live match has already been archived in Redis
-  // WHEN the background finalization job runs again for the same finished match
-  // THEN the existing archived result is reused and not overwritten
   it('does not overwrite an existing archived result when the background job runs again', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: true });
@@ -553,9 +499,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN Alice has a completed draft's live match page open while the real match is ongoing
-  // WHEN the live scraper poll receives a Full-Time match status from the match stats page
-  // THEN Alice's open page receives a WebSocket update, shows the final winner, and archives the full completed match for stats exploration
   it('finalizes and archives an open live match from the live stats full-time update', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: false });
@@ -585,9 +528,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  // GIVEN a match has a draft that is open or in progress but not completed
-  // WHEN the scraper marks the match finished and the background finalization job runs
-  // THEN Redis does not store a completed match result
   it('does not archive a finished match when its draft is not completed', () => {
     setDraft({
       status: 'started',
@@ -605,9 +545,6 @@ describe('Live match drafted player stats', () => {
     }).its('status').should('equal', 404);
   });
 
-  // GIVEN a match has no draft
-  // WHEN the scraper marks the match finished and the background finalization job runs
-  // THEN Redis does not store a completed match result
   it('does not archive a finished match that has no draft', () => {
     setScraperMatchStatus({ started: true, finished: true });
 
@@ -619,9 +556,6 @@ describe('Live match drafted player stats', () => {
     }).its('status').should('equal', 404);
   });
 
-  // GIVEN a draft is complete, the scraper says the match has finished, and two or more users have the same highest final score
-  // WHEN Alice opens that match's live page
-  // THEN the page shows the match ended in a tie and lists all tied users as winners
   it('shows a tied final result when multiple users share the highest final score', () => {
     completeDraft();
     cy.request('PUT', `/api/testing/live-matches/${match.id}/completed`, {
@@ -645,9 +579,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-squad-final-points').should('contain.text', '12 pts');
   });
 
-  // GIVEN a draft is complete and the scraper says the match has started but has not finished
-  // WHEN the background finalization job runs and Alice opens the live match page
-  // THEN Redis does not store a completed match result and the page continues to show live squad totals without a final winner banner
   it('does not archive or show a final winner while the match is still ongoing', () => {
     completeDraft();
     setScraperMatchStatus({ started: true, finished: false });

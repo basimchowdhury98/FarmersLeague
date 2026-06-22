@@ -16,9 +16,6 @@ describe('Passkey login', () => {
     });
   });
 
-  // GIVEN local test users have been seeded with formatted passkeys and Alice is an admin
-  // WHEN Alice visits the app using her valid passkey URL
-  // THEN she sees the current FarmersLeague home page
   it('allows Alice to access the home page with her valid passkey', () => {
     cy.intercept('GET', '/api/hello').as('helloApi');
     cy.intercept('GET', '/api/matches').as('matchesApi');
@@ -33,9 +30,6 @@ describe('Passkey login', () => {
     cy.testGet('no-access').should('not.exist');
   });
 
-  // GIVEN local test users have been seeded with formatted passkeys and Bob is not an admin
-  // WHEN Bob visits the app using his valid passkey URL
-  // THEN he sees the current FarmersLeague home page
   it('allows Bob to access the home page with his valid passkey', () => {
     cy.intercept('GET', '/api/hello').as('helloApi');
     cy.intercept('GET', '/api/matches').as('matchesApi');
@@ -50,9 +44,6 @@ describe('Passkey login', () => {
     cy.testGet('no-access').should('not.exist');
   });
 
-  // GIVEN access requires a known formatted passkey
-  // WHEN a visitor opens the app with an unknown formatted passkey URL
-  // THEN they see a “no access” page instead of the FarmersLeague home page
   it('denies access for an unknown passkey', () => {
     cy.visit('/mallory-9999-9999-9999');
 
@@ -61,9 +52,6 @@ describe('Passkey login', () => {
     cy.testGet('api-greeting').should('not.exist');
   });
 
-  // GIVEN access requires a valid passkey in the URL
-  // WHEN a visitor opens the app root without a passkey
-  // THEN they see a “no access” page instead of the FarmersLeague home page
   it('denies access when no passkey is provided', () => {
     cy.visit('/');
 

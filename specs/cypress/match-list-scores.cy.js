@@ -43,9 +43,6 @@ describe('Match list scores', () => {
     cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
   });
 
-  // GIVEN the scraper matches-list response has an ongoing match with a score string
-  // WHEN the matches API returns that match
-  // THEN the API includes the matches-list score without requiring lineup or per-match scraping
   it('returns the score from the scraper matches list for an ongoing match', () => {
     cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false, score: '2 - 1' });
 
@@ -60,9 +57,6 @@ describe('Match list scores', () => {
     });
   });
 
-  // GIVEN the matches API returns an ongoing match with home and away scores from the scraper matches list
-  // WHEN a logged-in user opens the home page
-  // THEN that match card shows the current score with the team names
   it('shows an ongoing match score with the team names on the Today page', () => {
     const ongoingMatch = matchResponse({
       id: 201,
@@ -81,9 +75,6 @@ describe('Match list scores', () => {
     });
   });
 
-  // GIVEN the matches API returns a finished match with home and away scores from the scraper matches list
-  // WHEN a logged-in user opens the home page and selects Past
-  // THEN that match card shows the final score with the team names
   it('shows a finished past match score with the team names on the Past page', () => {
     const finishedMatch = matchResponse({
       id: 202,
@@ -107,9 +98,6 @@ describe('Match list scores', () => {
     });
   });
 
-  // GIVEN the matches API lists past, ongoing, and upcoming matches
-  // WHEN a logged-in user opens the home page
-  // THEN past and ongoing matches are visible in their feed tabs when returned by /api/matches
   it('keeps past and ongoing matches visible in the match feed when returned by the matches list', () => {
     stubMatches([
       matchResponse({
@@ -143,9 +131,6 @@ describe('Match list scores', () => {
     matchCard('Brazil 3 - 0 Japan').should('be.visible');
   });
 
-  // GIVEN the matches API returns an upcoming match without scores
-  // WHEN a logged-in user opens the home page and selects Upcoming
-  // THEN the match card continues to show kickoff information and does not show a score
   it('continues to show kickoff information without a score for an unscored upcoming match', () => {
     const upcomingMatch = matchResponse({
       id: 206,
@@ -166,9 +151,6 @@ describe('Match list scores', () => {
     });
   });
 
-  // GIVEN a match has no score values in the /api/matches response
-  // WHEN the home page renders that match
-  // THEN the UI does not attempt to fetch per-match details for a score
   it('does not fetch per-match details when the matches list has no score for a match', () => {
     stubMatches([
       matchResponse({
