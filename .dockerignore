@@ -6,6 +6,6 @@
 **/node_modules
 **/dist
 **/.angular
-.agile/acceptance/node_modules
-.agile/acceptance/videos
-.agile/acceptance/screenshots
+specs/cypress/node_modules
+specs/cypress/videos
+specs/cypress/screenshots

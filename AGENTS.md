@@ -5,8 +5,7 @@ Context Dictionary:
     Use this to map terms, ideas to contexts such as rules, info about file structure, architecture, etc. Keys are 
 comma separated.
 
-Cypress, testing, acceptance: 
-    Tests located in ./.agile/acceptance/
+Cypress, testing, specs: 
+    Tests located in ./specs/cypress/
     Use `data-test` attributes for Cypress UI selectors and select them with `cy.testGet('selector-name')`
     Write blackbox style tests
-

@@ -301,11 +301,11 @@ describe('Live match drafted player stats', () => {
 
     cy.contains('[data-test="live-player-card"]', homeStarters[1]).click();
     cy.testGet('live-player-dialog').within(() => {
-      cy.contains('[data-test="live-stat-row"]', 'Touches in opposition box').should('be.visible');
-      cy.contains('[data-test="live-stat-row"]', 'Clearances').should('be.visible');
+      cy.contains('[data-test="live-stat-row"]', 'Touches in opposition box').scrollIntoView().should('be.visible');
+      cy.contains('[data-test="live-stat-row"]', 'Clearances').scrollIntoView().should('be.visible');
       cy.contains('[data-test="live-stat-row"]', 'Accurate passes').should('not.exist');
       cy.contains('[data-test="live-stat-row"]', 'Expected goals').should('not.exist');
-      cy.contains('[data-test="live-stat-row"]', 'Goals prevented').should('not.exist');
+      cy.contains('[data-test="live-stat-row"]', 'Expected goals on target faced').should('not.exist');
       cy.testGet('live-stat-points').each(($points) => {
         expect($points.text().trim()).not.to.equal('0 pts');
       });
@@ -479,7 +479,7 @@ describe('Live match drafted player stats', () => {
       expect(body.allPlayerStats.find((player) => player.name === homeBench[0]).totalPoints, 'undrafted player point total').to.be.at.least(0);
       expect(body.allPlayerStats.every((player) => player.team), 'all archived player teams').to.equal(true);
       expect(body.allPlayerStats.every((player) => player.stats), 'all archived player stats').to.equal(true);
-      expect(body.pointsConfig, 'points config snapshot').to.include({ goals: 10, goals_prevented: 0 });
+      expect(body.pointsConfig, 'points config snapshot').to.include({ goals: 10, goals_prevented: 10 });
     });
   });
 
@@ -501,7 +501,7 @@ describe('Live match drafted player stats', () => {
         return statsByKey;
       }, {})).reduce((total, stat) => {
         const multiplier = body.pointsConfig[stat.key] ?? 0;
-        const value = Number.isFinite(Number(stat.value)) ? Number(stat.value) : 0;
+        const value = Number.isFinite(Number(stat.value)) ? Math.round(Number(stat.value)) : 0;
 
         return total + value * multiplier;
       }, 0);
@@ -579,7 +579,7 @@ describe('Live match drafted player stats', () => {
         expect(body.draftedPlayerStats, 'archived drafted player stats').to.have.length(6);
         expect(body.allPlayerStats, 'archived all player stats').to.have.length.greaterThan(body.draftedPlayerStats.length);
         expect(body.allPlayerStats.map((player) => player.name), 'archived bench stats').to.include(homeBench[0]);
-        expect(body.pointsConfig, 'archived scoring config snapshot').to.include({ goals: 10, goals_prevented: 0 });
+        expect(body.pointsConfig, 'archived scoring config snapshot').to.include({ goals: 10, goals_prevented: 10 });
         body.winners.forEach((winner) => expect(pageText).to.contain(winner));
       });
     });

@@ -4,6 +4,6 @@
 **/dist/
 **/.angular/
 .env
-.agile/acceptance/videos/
-.agile/acceptance/screenshots/
+specs/cypress/videos/
+specs/cypress/screenshots/
 .playwright-mcp/**
