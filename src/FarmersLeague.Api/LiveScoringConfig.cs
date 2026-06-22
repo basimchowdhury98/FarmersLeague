@@ -2,7 +2,7 @@ public static class LiveScoringConfig
 {
     public static readonly IReadOnlyDictionary<string, int> PointMultipliers = new Dictionary<string, int>(StringComparer.Ordinal)
     {
-        ["goals"] = 10,
+        ["goals"] = 6,
         ["expected_goals"] = 0,
         ["expected_goals_on_target_variant"] = 0,
         ["total_shots"] = 0,
@@ -12,7 +12,7 @@ public static class LiveScoringConfig
         ["big_chance_missed_title"] = -3,
         ["touches"] = 0,
         ["accurate_passes"] = 0,
-        ["assists"] = 10,
+        ["assists"] = 6,
         ["expected_assists"] = 0,
         ["chances_created"] = 3,
         ["passes_into_final_third"] = 1,
@@ -35,7 +35,7 @@ public static class LiveScoringConfig
         ["saves"] = 3,
         ["goals_conceded"] = 0,
         ["expected_goals_on_target_faced"] = 0,
-        ["goals_prevented"] = 10,
+        ["goals_prevented"] = 6,
         ["keeper_sweeper"] = 3,
         ["keeper_high_claim"] = 2
     };
