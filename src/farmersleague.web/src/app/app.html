@@ -6,6 +6,54 @@
   </main>
 } @else if (hasAccess()) {
   <main class="shell">
+    <button type="button" data-test="scoring-help-button" aria-label="Show scoring rules" style="position: fixed; top: 1rem; right: 1rem; z-index: 40; display: grid; place-items: center; width: 2.65rem; height: 2.65rem; border: 1px solid rgb(184 233 134 / 52%); border-radius: 999px; background: rgb(13 34 25 / 92%); color: #b8e986; cursor: pointer; font: inherit; font-size: 1.4rem; font-weight: 950; box-shadow: 0 16px 34px rgb(0 0 0 / 34%);" (click)="openScoringRulesDialog()">?</button>
+
+    @if (isScoringRulesDialogOpen()) {
+      <section class="live-player-dialog" data-test="scoring-rules-dialog" role="dialog" aria-modal="true" aria-labelledby="scoring-rules-heading" (click)="closeScoringRulesDialog()">
+        <div class="live-player-dialog-panel" (click)="$event.stopPropagation()">
+          <div class="live-player-dialog-heading">
+            <div>
+              <p class="eyebrow">Live scoring</p>
+              <h2 id="scoring-rules-heading">Points multipliers</h2>
+            </div>
+            <button type="button" class="live-player-dialog-close" data-test="scoring-rules-close" aria-label="Close scoring rules" (click)="closeScoringRulesDialog()">Close</button>
+          </div>
+
+          <nav class="draft-order-mode-actions" aria-label="Scoring rule groups">
+            <button
+              type="button"
+              data-test="scoring-rules-scoring-tab"
+              [class.active-tab]="scoringRulesTab() === 'scoring'"
+              [style.background]="scoringRulesTab() === 'scoring' ? '#b8e986' : 'rgb(255 255 255 / 12%)'"
+              [style.color]="scoringRulesTab() === 'scoring' ? '#07140f' : '#f7f1df'"
+              [attr.aria-current]="scoringRulesTab() === 'scoring' ? 'page' : null"
+              (click)="setScoringRulesTab('scoring')"
+            >Scoring stats</button>
+            <button
+              type="button"
+              data-test="scoring-rules-zero-tab"
+              [class.active-tab]="scoringRulesTab() === 'zero'"
+              [style.background]="scoringRulesTab() === 'zero' ? '#b8e986' : 'rgb(255 255 255 / 12%)'"
+              [style.color]="scoringRulesTab() === 'zero' ? '#07140f' : '#f7f1df'"
+              [attr.aria-current]="scoringRulesTab() === 'zero' ? 'page' : null"
+              (click)="setScoringRulesTab('zero')"
+            >0 point stats</button>
+          </nav>
+
+          <dl class="live-player-stats" data-test="scoring-rules-list">
+            @for (rule of activeScoringRules(); track rule.key) {
+              <div class="live-stat-row scoring-rules-row" data-test="scoring-rule-row">
+                <dt>{{ rule.label }}</dt>
+                <dd [style.color]="rule.points < 0 ? '#ffaaa5' : '#b8e986'">{{ scoringRulePointsText(rule.points) }}</dd>
+              </div>
+            } @empty {
+              <p class="live-player-no-stats" data-test="scoring-rules-loading">Loading scoring rules...</p>
+            }
+          </dl>
+        </div>
+      </section>
+    }
+
     @if (route() === 'home') {
       <section class="scoreboard" aria-labelledby="matches-heading">
         <div class="scoreboard-topbar">

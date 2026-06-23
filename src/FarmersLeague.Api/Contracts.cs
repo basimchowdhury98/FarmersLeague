@@ -78,6 +78,8 @@ static class DraftRules
 
 record HelloResponse(string Message);
 
+record LiveScoringRuleResponse(string Key, string Label, int Points);
+
 record AccessResponse(bool HasAccess, string? UserName, bool IsAdmin);
 
 record LeagueUser(string Name, string Passkey, bool IsAdmin);

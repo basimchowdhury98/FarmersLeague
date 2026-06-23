@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
 import { draftedHighlightDurationMs, draftPickFlightDurationMs, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
 import { livePlayerPoints, liveStatPoints, scoringLivePlayerCategories } from './live-scoring';
-import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchLiveMessage, LiveMatchResponse, LivePlayer, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, StarterResponse } from './models';
+import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchLiveMessage, LiveMatchResponse, LivePlayer, LiveScoringRuleResponse, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, ScoringRulesTab, StarterResponse } from './models';
 
 const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
 const defaultMatchFeedTab: MatchFeedTab = 'today';
@@ -28,6 +28,11 @@ export class App {
   protected readonly homeError = signal('');
   protected readonly matchFeedTab = signal<MatchFeedTab>(defaultMatchFeedTab);
   protected readonly upcomingDateIndex = signal(0);
+  protected readonly scoringRules = signal<LiveScoringRuleResponse[]>([]);
+  protected readonly isScoringRulesDialogOpen = signal(false);
+  protected readonly scoringRulesTab = signal<ScoringRulesTab>('scoring');
+  protected readonly scoringPointRules = computed(() => this.scoringRules().filter((rule) => rule.points !== 0));
+  protected readonly zeroPointRules = computed(() => this.scoringRules().filter((rule) => rule.points === 0));
   protected readonly upcomingDateKeys = computed(() => this.uniqueDateKeys(this.upcomingMatches()));
   protected readonly visibleMatches = computed(() => {
     if (this.matchFeedTab() === 'past') {
@@ -87,6 +92,7 @@ export class App {
         this.isAdmin.set(response.isAdmin);
         this.isCheckingAccess.set(false);
 
+        this.loadScoringRules();
         this.loadCurrentRoute();
       },
       error: () => {
@@ -125,6 +131,33 @@ export class App {
       this.matchesLoaded.set(true);
       this.resetMatchFeedTab();
     });
+  }
+
+  private loadScoringRules() {
+    this.http.get<LiveScoringRuleResponse[]>('/api/live-scoring/rules').subscribe((response) => {
+      this.scoringRules.set(response);
+    });
+  }
+
+  protected openScoringRulesDialog() {
+    this.scoringRulesTab.set('scoring');
+    this.isScoringRulesDialogOpen.set(true);
+  }
+
+  protected closeScoringRulesDialog() {
+    this.isScoringRulesDialogOpen.set(false);
+  }
+
+  protected setScoringRulesTab(tab: ScoringRulesTab) {
+    this.scoringRulesTab.set(tab);
+  }
+
+  protected activeScoringRules() {
+    return this.scoringRulesTab() === 'scoring' ? this.scoringPointRules() : this.zeroPointRules();
+  }
+
+  protected scoringRulePointsText(points: number) {
+    return `${points > 0 ? '+' : ''}${points} pts`;
   }
 
   private resetMatchFeedTab() {

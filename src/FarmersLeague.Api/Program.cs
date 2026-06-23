@@ -55,6 +55,12 @@ app.UseWebSockets();
 
 app.MapGet("/api/hello", () => new HelloResponse("Hello from FarmersLeague API"));
 
+app.MapGet("/api/live-scoring/rules", () => LiveScoringConfig.PointMultipliers
+    .Select(entry => new LiveScoringRuleResponse(entry.Key, LiveScoringRuleLabel(entry.Key), entry.Value))
+    .OrderByDescending(rule => rule.Points != 0)
+    .ThenBy(rule => rule.Label, StringComparer.Ordinal)
+    .ToArray());
+
 app.MapGet("/api/access/{passkey}", async (string passkey, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     var user = await GetUser(passkey, cache, cancellationToken);
@@ -1178,6 +1184,47 @@ static int LiveStatPoints(PlayerStatResponse stat, IReadOnlyDictionary<string, i
 
 static int CalculateLiveStatPoints(object? value, string statKey, IReadOnlyDictionary<string, int> pointMultipliers) =>
     NumericStatValue(value) * pointMultipliers.GetValueOrDefault(statKey, 0);
+
+static string LiveScoringRuleLabel(string statKey) => statKey switch
+{
+    "goals" => "Goals",
+    "expected_goals" => "Expected goals",
+    "expected_goals_on_target_variant" => "Expected goals on target",
+    "total_shots" => "Total shots",
+    "ShotsOnTarget" => "Shots on target",
+    "touches_opp_box" => "Touches in opposition box",
+    "dribbles_succeeded" => "Successful dribbles",
+    "big_chance_missed_title" => "Big chances missed",
+    "touches" => "Touches",
+    "accurate_passes" => "Accurate passes",
+    "assists" => "Assists",
+    "expected_assists" => "Expected assists",
+    "chances_created" => "Chances created",
+    "passes_into_final_third" => "Passes into final third",
+    "accurate_crosses" => "Accurate crosses",
+    "long_balls_accurate" => "Accurate long balls",
+    "defensive_actions" => "Defensive actions",
+    "matchstats.headers.tackles" => "Tackles",
+    "shot_blocks" => "Shot blocks",
+    "recoveries" => "Recoveries",
+    "clearances" => "Clearances",
+    "headed_clearance" => "Headed clearances",
+    "interceptions" => "Interceptions",
+    "dribbled_past" => "Dribbled past",
+    "duel_won" => "Duels won",
+    "duel_lost" => "Duels lost",
+    "ground_duels_won" => "Ground duels won",
+    "aerials_won" => "Aerial duels won",
+    "fouls" => "Fouls",
+    "was_fouled" => "Fouls won",
+    "saves" => "Saves",
+    "goals_conceded" => "Goals conceded",
+    "expected_goals_on_target_faced" => "Expected goals on target faced",
+    "goals_prevented" => "Goals prevented",
+    "keeper_sweeper" => "Keeper sweeper actions",
+    "keeper_high_claim" => "Keeper high claims",
+    _ => statKey
+};
 
 static int NumericStatValue(object? value)
 {

@@ -2,6 +2,12 @@ export type HelloResponse = {
   message: string;
 };
 
+export type LiveScoringRuleResponse = {
+  key: string;
+  label: string;
+  points: number;
+};
+
 export type MatchResponse = {
   id: number;
   homeTeam: string;
@@ -158,3 +164,5 @@ export type DraftOrderRevealCompleteMessage = {
 };
 
 export type MatchFeedTab = 'past' | 'today' | 'upcoming';
+
+export type ScoringRulesTab = 'scoring' | 'zero';

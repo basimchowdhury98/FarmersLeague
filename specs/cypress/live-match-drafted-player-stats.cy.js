@@ -434,7 +434,7 @@ describe('Live match drafted player stats', () => {
       expect(body.allPlayerStats.find((player) => player.name === homeBench[0]).totalPoints, 'undrafted player point total').to.be.at.least(0);
       expect(body.allPlayerStats.every((player) => player.team), 'all archived player teams').to.equal(true);
       expect(body.allPlayerStats.every((player) => player.stats), 'all archived player stats').to.equal(true);
-      expect(body.pointsConfig, 'points config snapshot').to.include({ goals: 10, goals_prevented: 10 });
+      expect(body.pointsConfig, 'points config snapshot').to.include({ goals: 6, goals_prevented: 6 });
     });
   });
 
@@ -522,7 +522,7 @@ describe('Live match drafted player stats', () => {
         expect(body.draftedPlayerStats, 'archived drafted player stats').to.have.length(6);
         expect(body.allPlayerStats, 'archived all player stats').to.have.length.greaterThan(body.draftedPlayerStats.length);
         expect(body.allPlayerStats.map((player) => player.name), 'archived bench stats').to.include(homeBench[0]);
-        expect(body.pointsConfig, 'archived scoring config snapshot').to.include({ goals: 10, goals_prevented: 10 });
+        expect(body.pointsConfig, 'archived scoring config snapshot').to.include({ goals: 6, goals_prevented: 6 });
         body.winners.forEach((winner) => expect(pageText).to.contain(winner));
       });
     });

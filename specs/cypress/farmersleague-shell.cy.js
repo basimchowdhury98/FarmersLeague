@@ -29,4 +29,26 @@ describe('FarmersLeague shell', () => {
       .should('not.have.class', 'active-tab')
       .and('not.have.attr', 'aria-current');
   });
+
+  it('shows live scoring rules from the help popup', () => {
+    cy.intercept('GET', '/api/live-scoring/rules').as('scoringRulesApi');
+
+    cy.visit(`/${alicePasskey}`);
+    cy.wait('@scoringRulesApi').its('response.statusCode').should('equal', 200);
+
+    cy.testGet('scoring-help-button').should('be.visible').click();
+    cy.testGet('scoring-rules-dialog').within(() => {
+      cy.testGet('scoring-rules-scoring-tab')
+        .should('have.class', 'active-tab')
+        .and('have.attr', 'aria-current', 'page');
+      cy.contains('[data-test="scoring-rule-row"]', 'Goals').should('contain.text', '+6 pts');
+      cy.contains('[data-test="scoring-rule-row"]', 'Big chances missed').should('contain.text', '-3 pts');
+
+      cy.testGet('scoring-rules-zero-tab').click();
+      cy.testGet('scoring-rules-zero-tab')
+        .should('have.class', 'active-tab')
+        .and('have.attr', 'aria-current', 'page');
+      cy.contains('[data-test="scoring-rule-row"]', 'Expected goals').should('contain.text', '0 pts');
+    });
+  });
 });
