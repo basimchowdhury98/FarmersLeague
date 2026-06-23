@@ -75,7 +75,17 @@ public record WorldCupPlayerStatsResponse(
     string GameId,
     IReadOnlyList<WorldCupPlayerStatsPlayerResponse> Players,
     IReadOnlyList<string> MissingPlayers,
+    IReadOnlyList<WorldCupMatchSubstitutionResponse> Substitutions,
     WorldCupGameStatusResponse? Status = null);
+
+public record WorldCupMatchSubstitutionResponse(
+    int Minute,
+    bool IsHome,
+    string PlayerOnId,
+    string PlayerOnName,
+    string PlayerOffId,
+    string PlayerOffName,
+    bool InjuredPlayerOut);
 
 public record WorldCupPlayerStatsPlayerResponse(
     string Id,

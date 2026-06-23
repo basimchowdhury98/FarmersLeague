@@ -35,6 +35,10 @@ export type StarterResponse = {
   grid: string | null;
   gridRow: number | null;
   gridColumn: number | null;
+  isSubbedOff?: boolean;
+  subbedOffMinute?: number | null;
+  subbedOnPlayerName?: string | null;
+  injuredSubstitution?: boolean;
 };
 
 export type AccessResponse = {
@@ -101,6 +105,13 @@ export type LivePlayer = {
   name: string;
   teamName: string | null;
   categories: PlayerStatCategory[];
+  substitution?: LivePlayerSubstitution | null;
+};
+
+export type LivePlayerSubstitution = {
+  minute: number;
+  playerOnName: string;
+  injuredPlayerOut: boolean;
 };
 
 export type PlayerStatCategory = {

@@ -733,7 +733,7 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
         .Distinct(StringComparer.Ordinal)
         .ToArray();
     var allStats = await GetPlayerStats(match.Id, allPlayerNames, scraper, cancellationToken)
-        ?? new PlayerStatsResponse(match.Id.ToString(), [], allPlayerNames);
+        ?? new PlayerStatsResponse(match.Id.ToString(), [], allPlayerNames, []);
     var pointsConfig = LiveScoringConfig.PointMultipliers.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
     var draftedPlayerNames = draft.Picks.Select(pick => pick.PlayerName).ToHashSet(StringComparer.Ordinal);
     var draftedByPlayerName = draft.Picks
@@ -1075,7 +1075,17 @@ static PlayerStatsResponse ToPlayerStatsResponse(WorldCupPlayerStatsResponse sta
     stats.GameId,
     stats.Players.Select(ToPlayerStatsPlayerResponse).ToArray(),
     stats.MissingPlayers,
+    stats.Substitutions.Select(ToMatchSubstitutionResponse).ToArray(),
     stats.Status is null ? null : ToPlayerStatsMatchStatusResponse(stats.Status));
+
+static MatchSubstitutionResponse ToMatchSubstitutionResponse(WorldCupMatchSubstitutionResponse substitution) => new(
+    substitution.Minute,
+    substitution.IsHome,
+    substitution.PlayerOnId,
+    substitution.PlayerOnName,
+    substitution.PlayerOffId,
+    substitution.PlayerOffName,
+    substitution.InjuredPlayerOut);
 
 static PlayerStatsMatchStatusResponse ToPlayerStatsMatchStatusResponse(WorldCupGameStatusResponse status) => new(
     status.Started,
@@ -1123,11 +1133,15 @@ static PlayerStatResponse ToPlayerStatResponse(WorldCupPlayerStatResponse stat) 
     CalculateLiveStatPoints(stat.Value, stat.Key, LiveScoringConfig.PointMultipliers));
 
 static LiveMatchResponse ToCompletedLiveMatchResponse(MatchResponse match, DraftState draft, CompletedLiveMatchResult completed) =>
-    ToLiveMatchResponse(match, draft, new PlayerStatsResponse(match.Id.ToString(), completed.DraftedPlayerStats, []), completed);
+    ToLiveMatchResponse(match, draft, new PlayerStatsResponse(match.Id.ToString(), completed.DraftedPlayerStats, [], []), completed);
 
 static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, PlayerStatsResponse? stats, CompletedLiveMatchResult? completed = null)
 {
+    match = stats?.Substitutions.Count > 0 ? WithSubstitutions(match, stats.Substitutions) : match;
     var playersByName = stats?.Players.ToDictionary(player => player.Name, StringComparer.Ordinal) ?? [];
+    var substitutionsByPlayerName = stats?.Substitutions
+        .GroupBy(substitution => substitution.PlayerOffName, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group.OrderBy(substitution => substitution.Minute).First(), StringComparer.Ordinal) ?? [];
     var teamsByPlayerName = AllLineupPlayers(match)
         .GroupBy(player => player.Name, StringComparer.Ordinal)
         .ToDictionary(group => group.Key, group => group.First().TeamName, StringComparer.Ordinal);
@@ -1137,7 +1151,7 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
         .GroupBy(pick => pick.UserName, StringComparer.Ordinal)
         .Select(group => new LiveSquadResponse(
             group.Key,
-            group.Select(pick => ToLivePlayerResponse(pick.PlayerName, playersByName, teamsByPlayerName, pointMultipliers)).ToArray()))
+            group.Select(pick => ToLivePlayerResponse(pick.PlayerName, playersByName, substitutionsByPlayerName, teamsByPlayerName, pointMultipliers)).ToArray()))
         .ToArray();
 
     var finalResult = completed is null
@@ -1147,21 +1161,53 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
     return new LiveMatchResponse(match, squads, finalResult);
 }
 
+static MatchResponse WithSubstitutions(MatchResponse match, IReadOnlyList<MatchSubstitutionResponse> substitutions)
+{
+    var substitutionsByPlayerName = substitutions
+        .GroupBy(substitution => substitution.PlayerOffName, StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group.OrderBy(substitution => substitution.Minute).First(), StringComparer.Ordinal);
+
+    return match with
+    {
+        Lineups = match.Lineups.Select(lineup => lineup with
+        {
+            Starters = lineup.Starters.Select(starter => WithSubstitution(starter, substitutionsByPlayerName)).ToArray(),
+            Bench = lineup.Bench.Select(starter => WithSubstitution(starter, substitutionsByPlayerName)).ToArray()
+        }).ToArray()
+    };
+}
+
+static StarterResponse WithSubstitution(StarterResponse player, IReadOnlyDictionary<string, MatchSubstitutionResponse> substitutionsByPlayerName) =>
+    substitutionsByPlayerName.TryGetValue(player.Name, out var substitution)
+        ? player with
+        {
+            IsSubbedOff = true,
+            SubbedOffMinute = substitution.Minute,
+            SubbedOnPlayerName = substitution.PlayerOnName,
+            InjuredSubstitution = substitution.InjuredPlayerOut
+        }
+        : player;
+
 static IEnumerable<(string Name, string TeamName)> AllLineupPlayers(MatchResponse match) =>
     match.Lineups.SelectMany(lineup => lineup.Starters.Concat(lineup.Bench).Select(player => (player.Name, lineup.TeamName)));
 
 static LivePlayerResponse ToLivePlayerResponse(
     string playerName,
     IReadOnlyDictionary<string, PlayerStatsPlayerResponse> playersByName,
+    IReadOnlyDictionary<string, MatchSubstitutionResponse> substitutionsByPlayerName,
     IReadOnlyDictionary<string, string> teamsByPlayerName,
     IReadOnlyDictionary<string, int> pointMultipliers)
 {
+    var substitution = substitutionsByPlayerName.TryGetValue(playerName, out var playerSubstitution)
+        ? new LivePlayerSubstitutionResponse(playerSubstitution.Minute, playerSubstitution.PlayerOnName, playerSubstitution.InjuredPlayerOut)
+        : null;
+
     if (playersByName.TryGetValue(playerName, out var statsPlayer))
     {
-        return new LivePlayerResponse(playerName, statsPlayer.TeamName, WithStatPoints(statsPlayer.Categories, pointMultipliers));
+        return new LivePlayerResponse(playerName, statsPlayer.TeamName, WithStatPoints(statsPlayer.Categories, pointMultipliers), substitution);
     }
 
-    return new LivePlayerResponse(playerName, teamsByPlayerName.GetValueOrDefault(playerName), []);
+    return new LivePlayerResponse(playerName, teamsByPlayerName.GetValueOrDefault(playerName), [], substitution);
 }
 
 static IReadOnlyList<PlayerStatCategoryResponse> WithStatPoints(IReadOnlyList<PlayerStatCategoryResponse> categories, IReadOnlyDictionary<string, int> pointMultipliers) =>

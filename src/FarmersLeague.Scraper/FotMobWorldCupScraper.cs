@@ -76,7 +76,7 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
 
         if (UseFixtureData())
         {
-            return new WorldCupPlayerStatsResponse(gameId, [], requestedPlayers);
+            return new WorldCupPlayerStatsResponse(gameId, [], requestedPlayers, []);
         }
 
         var root = await GetMatchPageRoot(gameId, cancellationToken);
@@ -91,10 +91,17 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
             .Select(property => ToPlayerStatsPlayer(property.Value))
             .ToArray();
 
-        return SelectRequestedPlayerStats(gameId, players, requestedPlayers, TryGetMatchStatus(root.Value, out var status) ? status : null);
+        var substitutions = TryGetSubstitutions(root.Value, out var parsedSubstitutions) ? parsedSubstitutions : [];
+
+        return SelectRequestedPlayerStats(gameId, players, requestedPlayers, substitutions, TryGetMatchStatus(root.Value, out var status) ? status : null);
     }
 
-    private static WorldCupPlayerStatsResponse SelectRequestedPlayerStats(string gameId, IReadOnlyList<WorldCupPlayerStatsPlayerResponse> players, IReadOnlyList<string> requestedPlayers, WorldCupGameStatusResponse? status = null)
+    private static WorldCupPlayerStatsResponse SelectRequestedPlayerStats(
+        string gameId,
+        IReadOnlyList<WorldCupPlayerStatsPlayerResponse> players,
+        IReadOnlyList<string> requestedPlayers,
+        IReadOnlyList<WorldCupMatchSubstitutionResponse> substitutions,
+        WorldCupGameStatusResponse? status = null)
     {
         var foundPlayers = new List<WorldCupPlayerStatsPlayerResponse>();
         var missingPlayers = new List<string>();
@@ -114,7 +121,7 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
             }
         }
 
-        return new WorldCupPlayerStatsResponse(gameId, foundPlayers, missingPlayers, status);
+        return new WorldCupPlayerStatsResponse(gameId, foundPlayers, missingPlayers, substitutions, status);
     }
 
     private async Task<JsonElement?> GetMatchPageRoot(string gameId, CancellationToken cancellationToken)
@@ -275,6 +282,58 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
             && pageProps.TryGetProperty("content", out var content)
             && content.TryGetProperty("playerStats", out playerStats)
             && playerStats.ValueKind == JsonValueKind.Object;
+    }
+
+    private static bool TryGetSubstitutions(JsonElement root, out IReadOnlyList<WorldCupMatchSubstitutionResponse> substitutions)
+    {
+        substitutions = [];
+
+        if (!root.TryGetProperty("props", out var props)
+            || !props.TryGetProperty("pageProps", out var pageProps)
+            || !pageProps.TryGetProperty("content", out var content)
+            || !content.TryGetProperty("matchFacts", out var matchFacts)
+            || !TryGetObject(matchFacts, "events", out var eventsRoot)
+            || !TryGetArray(eventsRoot, "events", out var events))
+        {
+            return false;
+        }
+
+        substitutions = events
+            .EnumerateArray()
+            .Select(ToSubstitution)
+            .OfType<WorldCupMatchSubstitutionResponse>()
+            .OrderBy(substitution => substitution.Minute)
+            .ToArray();
+
+        return true;
+    }
+
+    private static WorldCupMatchSubstitutionResponse? ToSubstitution(JsonElement matchEvent)
+    {
+        if (!string.Equals(OptionalString(matchEvent, "type"), "Substitution", StringComparison.OrdinalIgnoreCase)
+            || !TryGetArray(matchEvent, "swap", out var swap)
+            || swap.GetArrayLength() < 2)
+        {
+            return null;
+        }
+
+        var playerOn = swap[0];
+        var playerOff = swap[1];
+        var playerOnName = OptionalString(playerOn, "name");
+        var playerOffName = OptionalString(playerOff, "name");
+        if (string.IsNullOrWhiteSpace(playerOnName) || string.IsNullOrWhiteSpace(playerOffName))
+        {
+            return null;
+        }
+
+        return new WorldCupMatchSubstitutionResponse(
+            OptionalInt(matchEvent, "time") ?? OptionalInt(matchEvent, "timeStr") ?? 0,
+            OptionalBool(matchEvent, "isHome") ?? false,
+            OptionalString(playerOn, "id") ?? string.Empty,
+            playerOnName,
+            OptionalString(playerOff, "id") ?? string.Empty,
+            playerOffName,
+            OptionalBool(matchEvent, "injuredPlayerOut") ?? false);
     }
 
     private static WorldCupLineupResponse ToLineup(JsonElement lineup) => new(

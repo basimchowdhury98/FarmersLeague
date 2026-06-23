@@ -216,7 +216,12 @@
                   @for (player of squad.players; track player.name) {
                     <li data-test="live-tracker-player">
                       <button type="button" data-test="live-tracker-player-card" (click)="openLivePlayerStats(player.name)">
-                        <span>{{ player.name }}</span>
+                        <span class="live-player-name-wrap" style="display:inline-flex;align-items:center;gap:.45rem;">
+                          <span>{{ player.name }}</span>
+                          @if (livePlayerSubstitutionLabel(player); as substitutionLabel) {
+                            <small class="substitution-badge" data-test="live-player-subbed-off" [attr.aria-label]="substitutionLabel" [attr.title]="livePlayerSubstitutionText(player)" style="display:inline-grid;place-items:center;width:1.25rem;height:1.25rem;border-radius:999px;background:#ffe0a1;color:#07140f;font-weight:950;">↔</small>
+                          }
+                        </span>
                         <strong class="points-value" data-test="live-player-points">
                           {{ livePlayerPoints(player) }} pts
                           @for (change of livePointChangesForPlayer(player.name); track change.id) {
@@ -250,14 +255,19 @@
                             type="button"
                             [class.live-player-current-user]="owner && isLivePlayerCurrentUser(starter.name)"
                             [class.live-player-opponent]="owner && !isLivePlayerCurrentUser(starter.name)"
-                            [disabled]="!owner"
+                            [disabled]="!owner && !starter.isSubbedOff"
                             [attr.data-test]="owner ? 'live-player-card' : null"
                             [attr.data-owner]="owner"
                             [attr.data-current-user-player]="owner && isLivePlayerCurrentUser(starter.name) ? 'true' : null"
                             [attr.data-opponent-player]="owner && !isLivePlayerCurrentUser(starter.name) ? 'true' : null"
-                            (click)="openLivePlayerStats(starter.name)"
+                            (click)="openLiveLineupPlayerStats(starter, lineup.teamName)"
                           >
-                            <span>{{ starter.name }}</span>
+                            <span class="live-player-name-wrap" style="display:inline-flex;align-items:center;gap:.45rem;">
+                              <span>{{ starter.name }}</span>
+                              @if (starterSubstitutionLabel(starter); as substitutionLabel) {
+                                <small class="substitution-badge" data-test="live-lineup-player-subbed-off" [attr.aria-label]="substitutionLabel" [attr.title]="starterSubstitutionText(starter)" style="display:inline-grid;place-items:center;width:1.25rem;height:1.25rem;border-radius:999px;background:#ffe0a1;color:#07140f;font-weight:950;">↔</small>
+                              }
+                            </span>
                             @if (owner) {
                               <small class="points-value" data-test="live-player-owner">
                                 {{ owner }} · {{ livePlayerPointsByName(starter.name) }} pts
@@ -290,10 +300,13 @@
                   <div>
                     <p class="eyebrow">Player stats</p>
                     <h2 id="live-player-dialog-heading">{{ selectedPlayer.name }}</h2>
-                    @if (selectedPlayer.teamName) {
-                      <p data-test="live-player-team">{{ selectedPlayer.teamName }}</p>
-                    }
-                  </div>
+                  @if (selectedPlayer.teamName) {
+                    <p data-test="live-player-team">{{ selectedPlayer.teamName }}</p>
+                  }
+                  @if (livePlayerSubstitutionText(selectedPlayer); as substitutionText) {
+                    <p class="live-player-dialog-substitution" data-test="live-player-dialog-subbed-off">{{ substitutionText }}</p>
+                  }
+                </div>
                   <strong class="points-value" data-test="live-player-dialog-points">
                     {{ livePlayerPoints(selectedPlayer) }} pts
                     @for (change of livePointChangesForPlayer(selectedPlayer.name); track change.id) {

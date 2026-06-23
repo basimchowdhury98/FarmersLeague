@@ -6,7 +6,9 @@ record LiveMatchHeartbeatMessage(string Type);
 
 record LiveSquadResponse(string UserName, IReadOnlyList<LivePlayerResponse> Players);
 
-record LivePlayerResponse(string Name, string? TeamName, IReadOnlyList<PlayerStatCategoryResponse> Categories);
+record LivePlayerResponse(string Name, string? TeamName, IReadOnlyList<PlayerStatCategoryResponse> Categories, LivePlayerSubstitutionResponse? Substitution = null);
+
+record LivePlayerSubstitutionResponse(int Minute, string PlayerOnName, bool InjuredPlayerOut);
 
 record LiveMatchFinalResultResponse(IReadOnlyList<string> Winners, IReadOnlyList<LiveSquadFinalScoreResponse> Squads, DateTimeOffset FinalizedAt);
 
@@ -37,7 +39,9 @@ record ArchivedPlayerStatsPlayerResponse(
 
 record PlayerStatsRequest(IReadOnlyList<string> Players);
 
-record PlayerStatsResponse(string GameId, IReadOnlyList<PlayerStatsPlayerResponse> Players, IReadOnlyList<string> MissingPlayers, PlayerStatsMatchStatusResponse? Status = null);
+record PlayerStatsResponse(string GameId, IReadOnlyList<PlayerStatsPlayerResponse> Players, IReadOnlyList<string> MissingPlayers, IReadOnlyList<MatchSubstitutionResponse> Substitutions, PlayerStatsMatchStatusResponse? Status = null);
+
+record MatchSubstitutionResponse(int Minute, bool IsHome, string PlayerOnId, string PlayerOnName, string PlayerOffId, string PlayerOffName, bool InjuredPlayerOut);
 
 record PlayerStatsMatchStatusResponse(bool Started, bool Finished, string? Score, PlayerStatsMatchStatusReasonResponse? Reason, string? LiveTime);
 

@@ -236,6 +236,44 @@ describe('Live match drafted player stats', () => {
       .and('contain.text', 'pts');
   });
 
+  it('shows subbed off indicators for drafted squads and all live lineup players', () => {
+    completeDraft();
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-tracker-player-card"]', homeStarters[1]).within(() => {
+      cy.testGet('live-player-subbed-off')
+        .should('contain.text', '↔')
+        .and('have.attr', 'title', 'Subbed off 64\' for Canada Substitute 1');
+    });
+    cy.contains('[data-test="live-player-card"]', homeStarters[1]).within(() => {
+      cy.testGet('live-lineup-player-subbed-off')
+        .should('contain.text', '↔')
+        .and('have.attr', 'title', 'Subbed off 64\' for Canada Substitute 1');
+    });
+
+    cy.contains('[data-test="live-lineup-player"]', 'Jonathan David').within(() => {
+      cy.testGet('live-lineup-player-subbed-off')
+        .should('contain.text', '↔')
+        .and('have.attr', 'title', 'Subbed off 79\' for Canada Substitute 2');
+    });
+
+    cy.contains('[data-test="live-tracker-player-card"]', homeStarters[1]).click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-player-dialog-subbed-off')
+        .should('contain.text', 'Subbed off 64\'')
+        .and('contain.text', 'Canada Substitute 1');
+    });
+    cy.testGet('live-player-dialog-close').click();
+
+    cy.contains('[data-test="live-lineup-player"]', 'Jonathan David').find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-player-dialog-subbed-off')
+        .should('contain.text', 'Subbed off 79\'')
+        .and('contain.text', 'Canada Substitute 2');
+    });
+  });
+
   it('loads the first scraper stats state and shows scoring stat fields for drafted players', () => {
     completeDraft();
 

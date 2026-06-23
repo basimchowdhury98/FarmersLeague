@@ -574,6 +574,39 @@ export class App {
     return this.livePlayerPoints(this.livePlayerByName(playerName));
   }
 
+  protected livePlayerSubstitutionText(player: LivePlayer) {
+    const substitution = player.substitution;
+    if (!substitution) {
+      return '';
+    }
+
+    return this.substitutionText(substitution.minute, substitution.playerOnName, substitution.injuredPlayerOut);
+  }
+
+  protected livePlayerSubstitutionLabel(player: LivePlayer) {
+    return player.substitution ? 'Subbed off. Open player details for substitution information.' : '';
+  }
+
+  protected starterSubstitutionText(starter: StarterResponse) {
+    if (!starter.isSubbedOff) {
+      return '';
+    }
+
+    return this.substitutionText(starter.subbedOffMinute, starter.subbedOnPlayerName, starter.injuredSubstitution === true);
+  }
+
+  protected starterSubstitutionLabel(starter: StarterResponse) {
+    return starter.isSubbedOff ? 'Subbed off. Open player details for substitution information.' : '';
+  }
+
+  private substitutionText(minute?: number | null, playerOnName?: string | null, injuredPlayerOut = false) {
+    const prefix = injuredPlayerOut ? 'Injured off' : 'Subbed off';
+    const minuteText = minute === null || minute === undefined ? '' : ` ${minute}'`;
+    const replacementText = playerOnName ? ` for ${playerOnName}` : '';
+
+    return `${prefix}${minuteText}${replacementText}`;
+  }
+
   protected livePointChangesForPlayer(playerName: string) {
     return this.livePointChanges().filter((change) => change.playerName === playerName);
   }
@@ -659,6 +692,29 @@ export class App {
     if (player) {
       this.selectedLivePlayer.set(player);
     }
+  }
+
+  protected openLiveLineupPlayerStats(starter: StarterResponse, teamName: string) {
+    const player = this.livePlayerByName(starter.name);
+    if (player) {
+      this.selectedLivePlayer.set(player);
+      return;
+    }
+
+    if (!starter.isSubbedOff) {
+      return;
+    }
+
+    this.selectedLivePlayer.set({
+      name: starter.name,
+      teamName,
+      categories: [],
+      substitution: {
+        minute: starter.subbedOffMinute ?? 0,
+        playerOnName: starter.subbedOnPlayerName ?? '',
+        injuredPlayerOut: starter.injuredSubstitution === true
+      }
+    });
   }
 
   protected closeLivePlayerStats() {

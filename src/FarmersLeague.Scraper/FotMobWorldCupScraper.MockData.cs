@@ -102,8 +102,15 @@ public partial class FotMobWorldCupScraper
 
         var status = MockGameStatusOverrides.GetValueOrDefault(gameId);
 
-        return SelectRequestedPlayerStats(gameId, players, requestedPlayers, status);
+        return SelectRequestedPlayerStats(gameId, players, requestedPlayers, MockSubstitutions(), status);
     }
+
+    private static IReadOnlyList<WorldCupMatchSubstitutionResponse> MockSubstitutions() =>
+    [
+        new(64, true, "can-sub-1", "Canada Substitute 1", "can-2", "Alistair Johnston", false),
+        new(72, false, "mex-sub-1", "Mexico Substitute 1", "mex-2", "Israel Reyes", false),
+        new(79, true, "can-sub-2", "Canada Substitute 2", "can-10", "Jonathan David", false)
+    ];
 
     private static IReadOnlyList<(WorldCupLineupTeamResponse Team, WorldCupLineupPlayerResponse Player)> MockLineupPlayers(WorldCupLineupResponse lineup) =>
     [

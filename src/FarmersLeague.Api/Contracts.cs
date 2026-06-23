@@ -122,4 +122,14 @@ record CachedHomeMatch(int Id, string HomeTeam, string AwayTeam, string League, 
 
 record LineupResponse(string TeamName, string Formation, IReadOnlyList<StarterResponse> Starters, IReadOnlyList<StarterResponse> Bench);
 
-record StarterResponse(string Name, int? Number, string? Position, string? Grid, int? GridRow, int? GridColumn);
+record StarterResponse(
+    string Name,
+    int? Number,
+    string? Position,
+    string? Grid,
+    int? GridRow,
+    int? GridColumn,
+    bool IsSubbedOff = false,
+    int? SubbedOffMinute = null,
+    string? SubbedOnPlayerName = null,
+    bool InjuredSubstitution = false);
