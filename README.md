@@ -7,7 +7,7 @@ Minimal shell for a World Cup friends league app.
 - .NET API serving the production Angular app
 - Angular web UI
 - FotMob-backed scraper services for World Cup data
-- Cypress e2e test
+- Cypress e2e tests backed by a generated local FotMob HTML site
 - Docker/Render-ready app image
 
 ## Local Docker Run
@@ -20,7 +20,7 @@ Open `http://localhost:8080`.
 
 ## Cypress
 
-To start the app with mock scraper data and run all Cypress tests:
+To start the app against the generated local FotMob HTML site and run all Cypress tests:
 
 ```sh
 make val
@@ -90,7 +90,6 @@ Do not use `UPSTASH_REDIS_REST_URL` or `UPSTASH_REDIS_REST_TOKEN`; this app uses
 ASPNETCORE_ENVIRONMENT=Production
 PORT=8080
 SeedTestUsers=false
-FotMob__MockMode=false
 FotMob__UseFixtureData=false
 Redis__ConnectionString=<UPSTASH_ENDPOINT>:<UPSTASH_PORT>,password=<UPSTASH_PASSWORD>,ssl=True,abortConnect=False
 ```
@@ -109,4 +108,4 @@ Avi:    avi-79fa-1d3a-3460
 Suyash: suyash-1efa-61d5-4fb3
 ```
 
-`SeedTestUsers=true` additionally seeds Alice, Bob, and Carol for mock-mode test runs. Local Docker validation sets this automatically when `USE_SCRAPER_MOCK_MODE=true`.
+`SeedTestUsers=true` additionally seeds Alice, Bob, and Carol for generated-FotMob test runs. Local Docker validation sets this automatically.

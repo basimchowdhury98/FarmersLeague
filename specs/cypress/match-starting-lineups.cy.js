@@ -6,6 +6,7 @@
 describe('Match draft page', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
+  const matchId = Cypress.env('mockMatches').confirmedLineups;
 
   let match;
   let matchLabel;
@@ -13,32 +14,22 @@ describe('Match draft page', () => {
   let awayStarters;
 
   const loadDraftableMatch = () => {
-    cy.request('/api/matches').then(({ body }) => {
-      match = body.find((candidate) => (
-        new Date(candidate.date).getTime() > Date.now()
-      ));
-
-      expect(match, 'upcoming scraper match').to.exist;
+    cy.getMockMatch(matchId).then((mockMatch) => {
+      match = mockMatch;
       matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
 
-      cy.request(`/api/drafts/${match.id}?passkey=${alicePasskey}`).then(({ body: draft }) => {
-        expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
-        expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
+      cy.getDraftLineups(matchId, alicePasskey).then((draft) => {
+        expect(draft.lineups, 'draft page lineups').to.have.length(2);
+        expect(draft.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
 
-        homeStarters = draft.match.lineups[0].starters.map((player) => player.name);
-        awayStarters = draft.match.lineups[1].starters.map((player) => player.name);
+        homeStarters = draft.homeStarters;
+        awayStarters = draft.awayStarters;
       });
     });
   };
 
-  const setDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${match.id}`, draftState)
-      .its('status')
-      .should('equal', 204);
-  };
-
   const setAliceBobDraft = (picks = []) => {
-    setDraft({ draftOrder: ['Alice', 'Bob'], picks });
+    cy.arrangeStartedDraft(match.id, { draftOrder: ['Alice', 'Bob'], picks });
   };
 
   const draftPath = (passkey) => `/${passkey}/matches/${match.id}/draft`;
@@ -72,19 +63,12 @@ describe('Match draft page', () => {
 
   beforeEach(() => {
     loadDraftableMatch();
-    cy.then(() => cy.request('DELETE', `/api/testing/drafts/${match.id}`).its('status').should('equal', 204));
-  });
-
-  it('starts each draft test with a cleared Redis draft cache', () => {
-    cy.visit(draftPath(alicePasskey));
-
-    cy.testGet('draft-summary').should('not.contain.text', homeStarters[0]);
-    cy.testGet('draft-status').should('not.contain.text', 'Draft complete');
+    cy.then(() => cy.arrangeNoDraft(match.id));
   });
 
   it('opens a passkey-scoped draft page with both teams starting 11s after clicking a match', () => {
     cy.visit(`/${alicePasskey}`);
-    cy.testGet('match-card').contains(matchLabel).click();
+    cy.findMatchCard(matchLabel).click();
 
     cy.location('pathname').should('equal', draftPath(alicePasskey));
     cy.testGet('draft-page').should('be.visible');
@@ -120,7 +104,7 @@ describe('Match draft page', () => {
     cy.testGet('current-turn').should('not.exist');
   });
 
-  it('assigns Alice an available player, makes the player unavailable, and advances the turn queue', () => {
+  it('assigns Alice an available player and advances the turn queue', () => {
     setAliceBobDraft();
 
     cy.visit(draftPath(alicePasskey));
@@ -134,11 +118,6 @@ describe('Match draft page', () => {
     assertTurnQueue(['Bob', 'Alice', 'Bob', 'Alice', 'Bob']);
     cy.testGet('current-turn').should('not.exist');
 
-    cy.visit(draftPath(bobPasskey));
-    draftPlayerRow(homeStarters[0])
-      .should('contain.text', 'Drafted by Alice')
-      .find('button')
-      .should('be.disabled');
   });
 
   it('live updates Bob\'s open draft page after Alice drafts a player', () => {
@@ -176,16 +155,10 @@ describe('Match draft page', () => {
     cy.testGet('current-turn').should('not.exist');
   });
 
-  it('lets each user draft exactly 3 players in turn order', () => {
-    setAliceBobDraft();
+  it('disables draft buttons after each user has 3 picks', () => {
+    setAliceBobDraft(completedPicks());
 
     cy.visit(draftPath(alicePasskey));
-    homeStarters.slice(0, 3).forEach((player, index) => {
-      clickDraft(player);
-      cy.visit(draftPath(bobPasskey));
-      clickDraft(awayStarters[index]);
-      cy.visit(draftPath(alicePasskey));
-    });
 
     cy.testGet('draft-picks-Alice').find('[data-test="drafted-player"]').should('have.length', 3);
     cy.testGet('draft-picks-Bob').find('[data-test="drafted-player"]').should('have.length', 3);

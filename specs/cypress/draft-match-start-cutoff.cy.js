@@ -5,10 +5,10 @@
 describe('Draft match start cutoff', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
-  const draftableMatchId = 1001;
-  const noLineupMatchId = 1002;
-  const predictedLineupMatchId = 1003;
-  const incompleteBenchMatchId = 1004;
+  const draftableMatchId = Cypress.env('mockMatches').confirmedLineups;
+  const noLineupMatchId = Cypress.env('mockMatches').noLineups;
+  const predictedLineupMatchId = Cypress.env('mockMatches').predictedLineups;
+  const incompleteBenchMatchId = Cypress.env('mockMatches').shortBench;
 
   let match;
   let noLineupMatch;
@@ -37,38 +37,23 @@ describe('Draft match start cutoff', () => {
   };
 
   const loadConfirmedLineups = () => {
-    cy.request(`/api/drafts/${draftableMatchId}?passkey=${alicePasskey}`).then(({ body: draft }) => {
-      expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
-      expect(draft.match.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
+    cy.getDraftLineups(draftableMatchId, alicePasskey).then((draft) => {
+      expect(draft.lineups, 'draft page lineups').to.have.length(2);
+      expect(draft.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
 
-      homeStarters = draft.match.lineups[0].starters.map((player) => player.name);
-      awayStarters = draft.match.lineups[1].starters.map((player) => player.name);
+      homeStarters = draft.homeStarters;
+      awayStarters = draft.awayStarters;
     });
   };
 
-  const setDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${draftableMatchId}`, draftState)
-      .its('status')
-      .should('equal', 204);
-  };
-
-  const setNoLineupDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${noLineupMatchId}`, draftState)
-      .its('status')
-      .should('equal', 204);
-  };
-
-  const setPredictedLineupDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${predictedLineupMatchId}`, draftState)
-      .its('status')
-      .should('equal', 204);
-  };
-
-  const setIncompleteBenchDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${incompleteBenchMatchId}`, draftState)
-      .its('status')
-      .should('equal', 204);
-  };
+  const arrangeOpenDraft = () => cy.arrangeOpenDraft(draftableMatchId, { joinedUsers: ['Alice', 'Bob'] });
+  const arrangeStartedDraftOnePickRemaining = () => cy.arrangeStartedDraft(draftableMatchId, {
+    draftOrder: ['Alice', 'Bob'],
+    picks: completedPicks().slice(0, 5)
+  });
+  const arrangeNoLineupOpenDraft = () => cy.arrangeOpenDraft(noLineupMatchId, { joinedUsers: ['Alice', 'Bob'] });
+  const arrangePredictedLineupOpenDraft = () => cy.arrangeOpenDraft(predictedLineupMatchId, { joinedUsers: ['Alice', 'Bob'] });
+  const arrangeIncompleteBenchOpenDraft = () => cy.arrangeOpenDraft(incompleteBenchMatchId, { joinedUsers: ['Alice', 'Bob'] });
 
   const completedPicks = () => [
     { userName: 'Alice', playerName: homeStarters[0] },
@@ -79,28 +64,32 @@ describe('Draft match start cutoff', () => {
     { userName: 'Bob', playerName: awayStarters[2] }
   ];
 
-  const matchCard = () => cy.contains('[data-test="match-card"]', matchLabel);
-  const noLineupMatchCard = () => cy.contains('[data-test="match-card"]', noLineupMatchLabel);
+  const matchCard = () => {
+    return cy.findMatchCard(matchLabel);
+  };
+  const noLineupMatchCard = () => {
+    return cy.findMatchCard(noLineupMatchLabel);
+  };
   const draftPath = (passkey) => `/${passkey}/matches/${draftableMatchId}/draft`;
   const clickDraft = (playerName) => cy.contains('[data-test="draft-player"]', playerName).within(() => cy.contains('button', 'Draft').click());
 
   beforeEach(() => {
     cy.resetScraperMatches();
-    cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
-    cy.request('DELETE', `/api/testing/drafts/${noLineupMatchId}`).its('status').should('equal', 204);
-    cy.request('DELETE', `/api/testing/drafts/${predictedLineupMatchId}`).its('status').should('equal', 204);
-    cy.request('DELETE', `/api/testing/drafts/${incompleteBenchMatchId}`).its('status').should('equal', 204);
+    cy.arrangeNoDraft(draftableMatchId);
+    cy.arrangeNoDraft(noLineupMatchId);
+    cy.arrangeNoDraft(predictedLineupMatchId);
+    cy.arrangeNoDraft(incompleteBenchMatchId);
     loadMatches();
     loadConfirmedLineups();
-    cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
+    cy.arrangeNoDraft(draftableMatchId);
   });
 
   afterEach(() => {
     cy.resetScraperMatches();
-    cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
-    cy.request('DELETE', `/api/testing/drafts/${noLineupMatchId}`).its('status').should('equal', 204);
-    cy.request('DELETE', `/api/testing/drafts/${predictedLineupMatchId}`).its('status').should('equal', 204);
-    cy.request('DELETE', `/api/testing/drafts/${incompleteBenchMatchId}`).its('status').should('equal', 204);
+    cy.arrangeNoDraft(draftableMatchId);
+    cy.arrangeNoDraft(noLineupMatchId);
+    cy.arrangeNoDraft(predictedLineupMatchId);
+    cy.arrangeNoDraft(incompleteBenchMatchId);
   });
 
   it('shows a create draft action for an unstarted match', () => {
@@ -113,7 +102,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('starts a joined draft before the scraper says the match has started', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft();
 
     cy.request('POST', `/api/drafts/${draftableMatchId}/start`, { passkey: alicePasskey, draftOrderMode: 'roundRobin' }).then(({ body }) => {
       expect(body.status).to.equal('started');
@@ -122,12 +111,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('opens the live match when the final pick completes before match start', () => {
-    setDraft({
-      status: 'started',
-      joinedUsers: ['Alice', 'Bob'],
-      draftOrder: ['Alice', 'Bob'],
-      picks: completedPicks().slice(0, 5)
-    });
+    arrangeStartedDraftOnePickRemaining();
 
     cy.visit(draftPath(bobPasskey));
     clickDraft(awayStarters[2]);
@@ -137,7 +121,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('hides draft creation and marks a started match as ongoing on the home page', () => {
-    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
+    cy.arrangeOngoingMatch(draftableMatchId);
     loadMatches();
 
     cy.visit(`/${alicePasskey}`);
@@ -149,7 +133,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('hides draft creation and marks a finished match as ended on the home page', () => {
-    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
+    cy.arrangeFinishedMatch(draftableMatchId);
     loadMatches();
 
     cy.visit(`/${alicePasskey}`);
@@ -161,7 +145,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('rejects starting a draft before the Preview tab lineup is available', () => {
-    setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeNoLineupOpenDraft();
 
     cy.request({
       method: 'POST',
@@ -175,7 +159,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('rejects starting a draft while the Preview tab lineup is predicted', () => {
-    setPredictedLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangePredictedLineupOpenDraft();
 
     cy.request({
       method: 'POST',
@@ -189,7 +173,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('starts a draft when confirmed starters are available without full benches', () => {
-    setIncompleteBenchDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeIncompleteBenchOpenDraft();
 
     cy.request(`/api/drafts/${incompleteBenchMatchId}?passkey=${alicePasskey}`).then(({ body: draft }) => {
       expect(draft.match.lineups, 'draft page lineups').to.have.length(2);
@@ -204,8 +188,8 @@ describe('Draft match start cutoff', () => {
   });
 
   it('rejects starting an open draft after the scraper says the match has started', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
-    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
+    arrangeOpenDraft();
+    cy.arrangeOngoingMatch(draftableMatchId);
 
     cy.request({
       method: 'POST',
@@ -219,13 +203,8 @@ describe('Draft match start cutoff', () => {
   });
 
   it('abandons the draft and routes home when the final pick happens after match start', () => {
-    setDraft({
-      status: 'started',
-      joinedUsers: ['Alice', 'Bob'],
-      draftOrder: ['Alice', 'Bob'],
-      picks: completedPicks().slice(0, 5)
-    });
-    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false });
+    arrangeStartedDraftOnePickRemaining();
+    cy.arrangeOngoingMatch(draftableMatchId);
 
     cy.visit(draftPath(bobPasskey));
     clickDraft(awayStarters[2]);
@@ -240,7 +219,7 @@ describe('Draft match start cutoff', () => {
   });
 
   it('rejects creating a draft through the API after the match has started or finished', () => {
-    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: true });
+    cy.arrangeFinishedMatch(draftableMatchId);
 
     cy.request({
       method: 'POST',

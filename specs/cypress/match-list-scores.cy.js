@@ -4,7 +4,7 @@
  */
 describe('Match list scores', () => {
   const alicePasskey = 'alice-1111-1111-1111';
-  const draftableMatchId = 1001;
+  const draftableMatchId = Cypress.env('mockMatches').confirmedLineups;
 
   const matchCard = (matchLabel) => cy.contains('[data-test="match-card"]', matchLabel);
 
@@ -33,18 +33,10 @@ describe('Match list scores', () => {
     }).as('perMatchDetails');
   };
 
-  beforeEach(() => {
-    cy.resetScraperMatches();
-    cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
-  });
-
-  afterEach(() => {
-    cy.resetScraperMatches();
-    cy.request('DELETE', `/api/testing/drafts/${draftableMatchId}`).its('status').should('equal', 204);
-  });
-
   it('returns the score from the scraper matches list for an ongoing match', () => {
-    cy.setScraperMatchStatus(draftableMatchId, { started: true, finished: false, score: '2 - 1' });
+    cy.resetScraperMatches();
+    cy.arrangeNoDraft(draftableMatchId);
+    cy.arrangeOngoingMatch(draftableMatchId, { score: '2 - 1' });
 
     cy.request('/api/matches').then(({ body }) => {
       const match = body.find((candidate) => candidate.id === draftableMatchId);
@@ -55,6 +47,7 @@ describe('Match list scores', () => {
       expect(match.hasFinished).to.equal(false);
       expect(match.lineups, 'home match list lineups').to.have.length(0);
     });
+    cy.resetScraperMatches();
   });
 
   it('shows an ongoing match score with the team names on the Today page', () => {

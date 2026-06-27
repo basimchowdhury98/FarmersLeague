@@ -5,7 +5,8 @@ SHELL := /bin/bash
 CYPRESS_SPECS := *.cy.js
 
 mock:
-	USE_SCRAPER_MOCK_MODE=true docker compose up --build -d
+	node specs/mock-fotmob/generator.js
+	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=continuous docker compose up --build -d
 
 run:
 	docker compose up --build app redis
@@ -19,7 +20,8 @@ stat:
 val:
 	set -e; \
 	trap 'docker compose down' EXIT; \
-	USE_SCRAPER_MOCK_MODE=true docker compose up --build -d; \
+	node specs/mock-fotmob/generator.js; \
+	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=continuous docker compose up --build -d; \
 	until curl -fsS http://localhost:8080/api/hello >/dev/null 2>&1; do sleep 1; done; \
 	if [ -f specs/cypress/package-lock.json ]; then npm --prefix specs/cypress ci; else npm --prefix specs/cypress install; fi; \
 	npm --prefix specs/cypress test -- --spec "$(CYPRESS_SPECS)"

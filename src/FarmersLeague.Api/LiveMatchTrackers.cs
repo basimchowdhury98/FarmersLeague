@@ -3,15 +3,32 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
-class LiveMatchTrackers
+class LiveMatchTrackers(IConfiguration configuration)
 {
-    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(15);
     private readonly ConcurrentDictionary<int, LiveMatchTracker> trackers = [];
 
     public LiveMatchTracker Start(int matchId, LiveMatchResponse initialState, Func<CancellationToken, Task<LiveMatchResponse?>> refresh, ILogger logger)
     {
-        return trackers.GetOrAdd(matchId, _ => new LiveMatchTracker(matchId, initialState, refresh, logger, RefreshInterval));
+        return trackers.GetOrAdd(matchId, _ => new LiveMatchTracker(
+            matchId,
+            initialState,
+            refresh,
+            logger,
+            RefreshInterval(),
+            IsContinuousRefresh(),
+            tracker => trackers.TryRemove(new KeyValuePair<int, LiveMatchTracker>(matchId, tracker))));
     }
+
+    private TimeSpan RefreshInterval()
+    {
+        var seconds = int.TryParse(configuration["LiveMatches:RefreshIntervalSeconds"], out var configuredSeconds)
+            ? configuredSeconds
+            : 15;
+
+        return TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 3600));
+    }
+
+    private bool IsContinuousRefresh() => string.Equals(configuration["LiveMatches:RefreshMode"], "continuous", StringComparison.OrdinalIgnoreCase);
 
     public bool TryGetCurrent(int matchId, out LiveMatchResponse? current)
     {
@@ -60,18 +77,23 @@ class LiveMatchTracker
     private readonly Func<CancellationToken, Task<LiveMatchResponse?>> refresh;
     private readonly ILogger logger;
     private readonly TimeSpan refreshInterval;
+    private readonly bool continuousRefresh;
+    private readonly Action<LiveMatchTracker> onStopped;
     private readonly ConcurrentDictionary<WebSocket, string> sockets = [];
     private readonly CancellationTokenSource stop = new();
     private readonly object currentLock = new();
+    private int stopped;
     private LiveMatchResponse current;
 
-    public LiveMatchTracker(int matchId, LiveMatchResponse initialState, Func<CancellationToken, Task<LiveMatchResponse?>> refresh, ILogger logger, TimeSpan refreshInterval)
+    public LiveMatchTracker(int matchId, LiveMatchResponse initialState, Func<CancellationToken, Task<LiveMatchResponse?>> refresh, ILogger logger, TimeSpan refreshInterval, bool continuousRefresh, Action<LiveMatchTracker> onStopped)
     {
         this.matchId = matchId;
         current = initialState;
         this.refresh = refresh;
         this.logger = logger;
         this.refreshInterval = refreshInterval;
+        this.continuousRefresh = continuousRefresh;
+        this.onStopped = onStopped;
 
         _ = Run();
     }
@@ -96,17 +118,28 @@ class LiveMatchTracker
     public void Unsubscribe(WebSocket socket)
     {
         sockets.TryRemove(socket, out _);
+        if (sockets.IsEmpty)
+        {
+            Stop();
+        }
     }
 
     public void Stop()
     {
+        if (Interlocked.Exchange(ref stopped, 1) == 1)
+        {
+            return;
+        }
+
         stop.Cancel();
+        onStopped(this);
     }
 
     private async Task Run()
     {
         if (Current.FinalResult is not null)
         {
+            Stop();
             return;
         }
 
@@ -125,12 +158,12 @@ class LiveMatchTracker
                     await Broadcast(sendHeartbeatWhenUnchanged: true, stop.Token);
                     if (next.FinalResult is not null)
                     {
-                        stop.Cancel();
+                        Stop();
                         return;
                     }
                 }
 
-                await Task.Delay(refreshInterval, stop.Token);
+                await DelayBeforeNextRefresh();
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested)
             {
@@ -141,7 +174,7 @@ class LiveMatchTracker
                 logger.LogError(ex, "Live match tracker refresh failed for match {MatchId}", matchId);
                 try
                 {
-                    await Task.Delay(refreshInterval, stop.Token);
+                    await DelayBeforeNextRefresh();
                 }
                 catch (OperationCanceledException) when (stop.IsCancellationRequested)
                 {
@@ -150,6 +183,10 @@ class LiveMatchTracker
             }
         }
     }
+
+    private Task DelayBeforeNextRefresh() => continuousRefresh
+        ? Task.CompletedTask
+        : Task.Delay(refreshInterval, stop.Token);
 
     private async Task Broadcast(bool sendHeartbeatWhenUnchanged, CancellationToken cancellationToken)
     {

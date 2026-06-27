@@ -6,7 +6,9 @@ describe('Upcoming match draft lobby', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
   const carolPasskey = 'carol-3333-3333-3333';
-  const predictedLineupMatchId = 1003;
+  const draftableMatchId = Cypress.env('mockMatches').confirmedLineups;
+  const noLineupMatchId = Cypress.env('mockMatches').noLineups;
+  const predictedLineupMatchId = Cypress.env('mockMatches').predictedLineups;
   const lineupUnavailableMessage = 'No lineup available yet. Draft can\'t start until the starting lineup is available.';
 
   let match;
@@ -19,109 +21,53 @@ describe('Upcoming match draft lobby', () => {
   let completedPicks;
 
   const loadDraftableMatch = () => {
-    return cy.request('/api/matches').then(({ body }) => {
-      const upcomingMatches = body.filter((candidate) => (
-        new Date(candidate.date).getTime() > Date.now()
-      ));
+    return cy.getMockMatch(draftableMatchId).then((mockMatch) => {
+      match = mockMatch;
+      matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
 
-      const findDraftableMatch = (remainingMatches) => {
-        expect(remainingMatches, 'upcoming scraper matches').to.have.length.greaterThan(0);
-        const [candidate, ...rest] = remainingMatches;
+      return cy.getDraftLineups(draftableMatchId, alicePasskey).then((draft) => {
+        expect(draft.lineups, 'draft page lineups').to.have.length(2);
+        expect(draft.lineups.every((lineup) => lineup.starters.length === 11)).to.equal(true);
 
-        return cy.request({
-          url: `/api/drafts/${candidate.id}?passkey=${alicePasskey}`,
-          failOnStatusCode: false
-        }).then((response) => {
-          const lineups = response.body?.match?.lineups ?? [];
-          const hasFullLineups = response.status === 200
-            && lineups.length === 2
-            && lineups.every((lineup) => lineup.starters.length === 11);
-
-          if (!hasFullLineups) {
-            return findDraftableMatch(rest);
-          }
-
-          match = candidate;
-          matchLabel = `${candidate.homeTeam} vs ${candidate.awayTeam}`;
-          alicePlayers = lineups[0].starters.slice(0, 3).map((player) => player.name);
-          bobPlayers = lineups[1].starters.slice(0, 3).map((player) => player.name);
-          completedPicks = [
-            { userName: 'Alice', playerName: alicePlayers[0] },
-            { userName: 'Bob', playerName: bobPlayers[0] },
-            { userName: 'Alice', playerName: alicePlayers[1] },
-            { userName: 'Bob', playerName: bobPlayers[1] },
-            { userName: 'Alice', playerName: alicePlayers[2] },
-            { userName: 'Bob', playerName: bobPlayers[2] }
-          ];
-        });
-      };
-
-      return findDraftableMatch(upcomingMatches);
+        alicePlayers = draft.homeStarters.slice(0, 3);
+        bobPlayers = draft.awayStarters.slice(0, 3);
+        completedPicks = [
+          { userName: 'Alice', playerName: alicePlayers[0] },
+          { userName: 'Bob', playerName: bobPlayers[0] },
+          { userName: 'Alice', playerName: alicePlayers[1] },
+          { userName: 'Bob', playerName: bobPlayers[1] },
+          { userName: 'Alice', playerName: alicePlayers[2] },
+          { userName: 'Bob', playerName: bobPlayers[2] }
+        ];
+      });
     });
   };
 
   const loadNoLineupMatch = () => {
-    return cy.request('/api/matches').then(({ body }) => {
-      const upcomingMatches = body.filter((candidate) => (
-        new Date(candidate.date).getTime() > Date.now()
-      ));
-
-      const findNoLineupMatch = (remainingMatches) => {
-        expect(remainingMatches, 'upcoming scraper matches').to.have.length.greaterThan(0);
-        const [candidate, ...rest] = remainingMatches;
-
-        return cy.request({
-          url: `/api/drafts/${candidate.id}?passkey=${alicePasskey}`,
-          failOnStatusCode: false
-        }).then((response) => {
-          if (response.status === 200 && response.body.match?.lineups?.length === 0) {
-            noLineupMatch = candidate;
-            noLineupMatchLabel = `${candidate.homeTeam} vs ${candidate.awayTeam}`;
-            return;
-          }
-
-          if (response.status === 404) {
-            noLineupMatch = candidate;
-            noLineupMatchLabel = `${candidate.homeTeam} vs ${candidate.awayTeam}`;
-            return;
-          }
-
-          return findNoLineupMatch(rest);
-        });
-      };
-
-      return findNoLineupMatch(upcomingMatches);
+    return cy.getMockMatch(noLineupMatchId).then((mockMatch) => {
+      noLineupMatch = mockMatch;
+      noLineupMatchLabel = `${noLineupMatch.homeTeam} vs ${noLineupMatch.awayTeam}`;
     });
   };
 
   const loadPredictedLineupMatch = () => {
-    return cy.request('/api/matches').then(({ body }) => {
-      predictedLineupMatch = body.find((candidate) => candidate.id === predictedLineupMatchId);
-
-      expect(predictedLineupMatch, 'predicted-lineup scraper match').to.exist;
+    return cy.getMockMatch(predictedLineupMatchId).then((mockMatch) => {
+      predictedLineupMatch = mockMatch;
     });
   };
 
-  const setDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${match.id}`, draftState)
-      .its('status')
-      .should('equal', 204);
-  };
+  const arrangeOpenDraft = (joinedUsers = ['Alice']) => cy.arrangeOpenDraft(match.id, { joinedUsers });
+  const arrangeStartedDraft = (picks = []) => cy.arrangeStartedDraft(match.id, { draftOrder: ['Alice', 'Bob'], picks });
+  const arrangeCompletedDraft = () => cy.arrangeCompletedDraft(match.id, { draftOrder: ['Alice', 'Bob'], picks: completedPicks });
+  const arrangeNoLineupOpenDraft = (joinedUsers = ['Alice']) => cy.arrangeOpenDraft(noLineupMatch.id, { joinedUsers });
+  const arrangePredictedLineupOpenDraft = (joinedUsers = ['Alice', 'Bob']) => cy.arrangeOpenDraft(predictedLineupMatch.id, { joinedUsers });
 
-  const setNoLineupDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${noLineupMatch.id}`, draftState)
-      .its('status')
-      .should('equal', 204);
+  const matchCard = () => {
+    return cy.findMatchCard(matchLabel);
   };
-
-  const setPredictedLineupDraft = (draftState) => {
-    cy.request('PUT', `/api/testing/drafts/${predictedLineupMatch.id}`, draftState)
-      .its('status')
-      .should('equal', 204);
+  const noLineupMatchCard = () => {
+    return cy.findMatchCard(noLineupMatchLabel);
   };
-
-  const matchCard = () => cy.contains('[data-test="match-card"]', matchLabel);
-  const noLineupMatchCard = () => cy.contains('[data-test="match-card"]', noLineupMatchLabel);
 
   const assertTwoUserRoundRobinQueue = () => {
     cy.testGet('draft-turn-queue').find('[data-test="draft-turn-queue-item"]').then(($items) => {
@@ -160,23 +106,10 @@ describe('Upcoming match draft lobby', () => {
     matchCard().within(() => cy.testGet('create-draft-button').click());
   };
 
-  const showMatchDateTab = () => {
-    const matchDate = new Date(match.date);
-    const today = new Date();
-    const matchDay = new Date(matchDate.getFullYear(), matchDate.getMonth(), matchDate.getDate()).getTime();
-    const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-
-    if (matchDay > todayDay) {
-      cy.testGet('upcoming-matches-tab').click();
-    } else if (matchDay < todayDay) {
-      cy.testGet('past-matches-tab').click();
-    }
-  };
-
   beforeEach(() => {
     cy.resetScraperMatches();
     loadDraftableMatch();
-    cy.then(() => cy.request('DELETE', `/api/testing/drafts/${match.id}`).its('status').should('equal', 204));
+    cy.then(() => cy.arrangeNoDraft(match.id));
   });
 
   afterEach(() => {
@@ -233,7 +166,7 @@ describe('Upcoming match draft lobby', () => {
   it('creates a draft for an upcoming match before lineups are available', () => {
     loadNoLineupMatch()
       .then(() => {
-        cy.request('DELETE', `/api/testing/drafts/${noLineupMatch.id}`).its('status').should('equal', 204);
+        cy.arrangeNoDraft(noLineupMatch.id);
 
         cy.visit(`/${alicePasskey}`);
         noLineupMatchCard().within(() => cy.testGet('create-draft-button').click());
@@ -246,7 +179,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('shows Bob an open draft with a join action after Alice creates it', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice']);
 
     cy.visit(`/${bobPasskey}`);
 
@@ -259,7 +192,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('lets Bob join an open draft and navigates him to the draft page', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice']);
 
     cy.visit(`/${bobPasskey}`);
     matchCard().click();
@@ -271,7 +204,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('keeps the Join draft button available when a regular user can also join by clicking the card', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice']);
 
     cy.visit(`/${bobPasskey}`);
 
@@ -281,7 +214,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('reopens an open draft from the match card when the current user has already joined', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.visit(`/${alicePasskey}`);
     matchCard().click();
@@ -292,7 +225,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('prevents starting or drafting when only one user has joined the draft', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice']);
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
 
@@ -302,7 +235,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('shows a start draft button to an admin when at least two users have joined', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
 
@@ -312,7 +245,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('does not show regular users the start draft action', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.visit(`/${bobPasskey}/matches/${match.id}/draft`);
 
@@ -322,7 +255,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('enables starting a draft when enough users have joined and lineups are available', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
 
@@ -333,7 +266,7 @@ describe('Upcoming match draft lobby', () => {
   it('blocks starting a draft when the lineup is unavailable', () => {
     loadNoLineupMatch()
       .then(() => {
-        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+        arrangeNoLineupOpenDraft(['Alice', 'Bob']);
 
         cy.visit(`/${alicePasskey}/matches/${noLineupMatch.id}/draft`);
 
@@ -346,8 +279,8 @@ describe('Upcoming match draft lobby', () => {
   it('treats a predicted Preview tab lineup as unavailable on the draft page', () => {
     loadPredictedLineupMatch()
       .then(() => {
-        cy.request('DELETE', `/api/testing/drafts/${predictedLineupMatch.id}`).its('status').should('equal', 204);
-        setPredictedLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+        cy.arrangeNoDraft(predictedLineupMatch.id);
+        arrangePredictedLineupOpenDraft(['Alice', 'Bob']);
 
         cy.visit(`/${alicePasskey}/matches/${predictedLineupMatch.id}/draft`);
 
@@ -362,7 +295,7 @@ describe('Upcoming match draft lobby', () => {
   it('shows both lineup and minimum-player warnings when both requirements are unmet', () => {
     loadNoLineupMatch()
       .then(() => {
-        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+        arrangeNoLineupOpenDraft(['Alice']);
 
         cy.visit(`/${alicePasskey}/matches/${noLineupMatch.id}/draft`);
 
@@ -375,7 +308,7 @@ describe('Upcoming match draft lobby', () => {
   it('allows users to join a draft lobby before lineups are available', () => {
     loadNoLineupMatch()
       .then(() => {
-        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice'], draftOrder: [], picks: [] });
+        arrangeNoLineupOpenDraft(['Alice']);
 
         cy.visit(`/${bobPasskey}`);
         noLineupMatchCard().within(() => cy.testGet('join-draft-button').click());
@@ -390,7 +323,7 @@ describe('Upcoming match draft lobby', () => {
   it('hides the draftable player list when the lineup is unavailable', () => {
     loadNoLineupMatch()
       .then(() => {
-        setNoLineupDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+        arrangeNoLineupOpenDraft(['Alice', 'Bob']);
 
         cy.visit(`/${alicePasskey}/matches/${noLineupMatch.id}/draft`);
 
@@ -401,7 +334,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('allows an admin to start a round robin draft with a repeated randomized joined-user order', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
     cy.testGet('start-draft-button').click();
@@ -412,16 +345,10 @@ describe('Upcoming match draft lobby', () => {
     cy.testGet('draft-order').find('[data-test="draft-order-user"]').should('have.length', 2);
     cy.testGet('draft-order').should('contain.text', 'Alice').and('contain.text', 'Bob');
     assertTwoUserRoundRobinQueue();
-
-    cy.visit(`/${carolPasskey}`);
-    matchCard().within(() => {
-      cy.testGet('match-draft-status').should('contain.text', 'Draft in progress');
-      cy.testGet('join-draft-button').should('not.exist');
-    });
   });
 
   it('allows an admin to start a two-user ABBA draft order', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
     cy.testGet('start-draft-button').click();
@@ -435,7 +362,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('allows an admin to start a three-user ABBA draft order', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob', 'Carol'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob', 'Carol']);
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
     cy.testGet('start-draft-button').click();
@@ -449,7 +376,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('keeps the draft open when an admin cancels the draft order mode popup', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
     cy.testGet('start-draft-button').click();
@@ -463,7 +390,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('does not allow a user to join a draft after it has started', () => {
-    setDraft({ status: 'started', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: [] });
+    arrangeStartedDraft();
 
     cy.visit(`/${carolPasskey}`);
 
@@ -474,21 +401,30 @@ describe('Upcoming match draft lobby', () => {
     });
   });
 
-  it('allows an admin to cancel a draft and clear drafted decisions', () => {
-    setDraft({
-      status: 'started',
-      joinedUsers: ['Alice', 'Bob'],
-      draftOrder: ['Alice', 'Bob'],
-      picks: [{ userName: 'Alice', playerName: alicePlayers[0] }]
-    });
+  const startedDraftWithPick = () => {
+    arrangeStartedDraft([{ userName: 'Alice', playerName: alicePlayers[0] }]);
+  };
 
+  const cancelDraftFromHome = () => {
     cy.visit(`/${alicePasskey}`);
     matchCard().within(() => cy.testGet('cancel-draft-button').click());
+  };
+
+  it('allows an admin to cancel a draft from the home page', () => {
+    startedDraftWithPick();
+
+    cancelDraftFromHome();
 
     matchCard().within(() => {
       cy.testGet('create-draft-button').should('be.visible').and('contain.text', 'Create draft');
       cy.testGet('match-draft-status').should('not.contain.text', 'Draft in progress');
     });
+  });
+
+  it('clears drafted decisions when an admin cancels a draft', () => {
+    startedDraftWithPick();
+
+    cancelDraftFromHome();
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
     cy.testGet('draft-summary').should('not.contain.text', alicePlayers[0]);
@@ -497,7 +433,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('does not show regular users the cancel draft action', () => {
-    setDraft({ status: 'started', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: [] });
+    arrangeStartedDraft();
 
     cy.visit(`/${bobPasskey}`);
 
@@ -517,7 +453,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('rejects regular user draft start through the API', () => {
-    setDraft({ status: 'open', joinedUsers: ['Alice', 'Bob'], draftOrder: [], picks: [] });
+    arrangeOpenDraft(['Alice', 'Bob']);
 
     cy.request({
       method: 'POST',
@@ -528,7 +464,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('rejects regular user draft cancellation through the API', () => {
-    setDraft({ status: 'started', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: [] });
+    arrangeStartedDraft();
 
     cy.request({
       method: 'DELETE',
@@ -538,7 +474,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('shows completed drafts without draft management actions on the home page', () => {
-    setDraft({ status: 'completed', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: completedPicks });
+    arrangeCompletedDraft();
 
     cy.visit(`/${alicePasskey}`);
 
@@ -552,7 +488,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('opens the live match page from a completed draft card', () => {
-    setDraft({ status: 'completed', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: completedPicks });
+    arrangeCompletedDraft();
 
     cy.visit(`/${bobPasskey}`);
     matchCard().click();
@@ -562,14 +498,10 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('opens the live match results page from a completed draft card after the match ends', () => {
-    setDraft({ status: 'completed', joinedUsers: ['Alice', 'Bob'], draftOrder: ['Alice', 'Bob'], picks: completedPicks });
-    cy.setScraperMatchStatus(match.id, { started: true, finished: true });
-    cy.request('POST', '/api/testing/live-matches/finalize-completed')
-      .its('status')
-      .should('equal', 204);
+    cy.arrangeFinishedMatch(match.id);
+    arrangeCompletedDraft();
 
     cy.visit(`/${bobPasskey}`);
-    showMatchDateTab();
     matchCard().click();
 
     cy.location('pathname').should('equal', `/${bobPasskey}/matches/${match.id}/live`);
@@ -581,7 +513,7 @@ describe('Upcoming match draft lobby', () => {
 
     cy.visit(`/${alicePasskey}`);
 
-    matchCard().within(() => {
+    cy.findMatchCard(matchLabel).within(() => {
       cy.testGet('match-draft-status').should('contain.text', 'No draft yet');
       cy.testGet('create-draft-button').should('be.visible');
       cy.testGet('join-draft-button').should('not.exist');

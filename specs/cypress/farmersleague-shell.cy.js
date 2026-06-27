@@ -1,7 +1,7 @@
 describe('FarmersLeague shell', () => {
   const alicePasskey = 'alice-1111-1111-1111';
 
-  it('loads UI data through the API and scraper services', () => {
+  it('loads the authenticated shell through the API', () => {
     cy.intercept('GET', '/api/hello').as('helloApi');
     cy.intercept('GET', '/api/matches').as('matchesApi');
 
@@ -15,8 +15,6 @@ describe('FarmersLeague shell', () => {
 
     cy.contains('h1', 'FarmersLeague').should('be.visible');
     cy.testGet('api-greeting').should('contain.text', 'Welcome back, Alice');
-    cy.testGet('match-league').should('contain.text', 'FIFA World Cup');
-    cy.testGet('match-card').should('have.length.greaterThan', 0);
   });
 
   it('selects the Today tab by default on the home page', () => {

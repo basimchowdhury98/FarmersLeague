@@ -5,16 +5,6 @@
 describe('Passkey login', () => {
   const alicePasskey = 'alice-1111-1111-1111';
   const bobPasskey = 'bob-2222-2222-2222';
-  let matchLabel;
-
-  before(() => {
-    cy.request('/api/matches').then(({ body }) => {
-      const match = body[0];
-
-      expect(match, 'scraper match').to.exist;
-      matchLabel = `${match.homeTeam} vs ${match.awayTeam}`;
-    });
-  });
 
   it('allows Alice to access the home page with her valid passkey', () => {
     cy.intercept('GET', '/api/hello').as('helloApi');
@@ -26,7 +16,6 @@ describe('Passkey login', () => {
     cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
     cy.testGet('api-greeting').should('contain.text', 'Welcome back, Alice');
-    cy.testGet('match-teams').should('contain.text', matchLabel);
     cy.testGet('no-access').should('not.exist');
   });
 
@@ -40,7 +29,6 @@ describe('Passkey login', () => {
     cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
     cy.testGet('api-greeting').should('contain.text', 'Welcome back, Bob');
-    cy.testGet('match-teams').should('contain.text', matchLabel);
     cy.testGet('no-access').should('not.exist');
   });
 

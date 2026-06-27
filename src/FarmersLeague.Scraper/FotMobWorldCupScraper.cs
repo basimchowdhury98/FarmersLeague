@@ -8,7 +8,6 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
 {
     private const string NextDataStart = "<script id=\"__NEXT_DATA__\" type=\"application/json\">";
     private const string ScriptEnd = "</script>";
-    private int mockPlayerStatsStep;
     private static readonly PlayerStatCategoryDefinition[] PlayerStatCategories =
     [
         new("attack", "Attack", ["goals", "expected_goals", "expected_goals_on_target_variant", "total_shots", "ShotsOnTarget", "touches_opp_box", "dribbles_succeeded", "big_chance_missed_title"]),
@@ -20,11 +19,6 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
 
     public async Task<IReadOnlyList<WorldCupGameResponse>> GetGames(CancellationToken cancellationToken)
     {
-        if (UseMockMode())
-        {
-            return MockGames();
-        }
-
         if (UseFixtureData())
         {
             return FixtureGames();
@@ -40,15 +34,6 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
 
     public async Task<WorldCupLineupResponse?> GetLineup(string gameId, CancellationToken cancellationToken)
     {
-        if (UseMockMode())
-        {
-            var mockLineup = MockLineup(gameId);
-
-            return mockLineup is not null && IsConfirmedLineup(mockLineup)
-                ? mockLineup
-                : null;
-        }
-
         if (UseFixtureData())
         {
             return string.Equals(gameId, FixtureGameId, StringComparison.Ordinal) ? FixtureLineup() : null;
@@ -67,13 +52,6 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
 
     public async Task<WorldCupPlayerStatsResponse?> GetPlayerStats(string gameId, IReadOnlyList<string> requestedPlayers, CancellationToken cancellationToken)
     {
-        if (UseMockMode())
-        {
-            return string.Equals(gameId, MockGameId, StringComparison.Ordinal)
-                ? MockPlayerStats(gameId, requestedPlayers)
-                : null;
-        }
-
         if (UseFixtureData())
         {
             return new WorldCupPlayerStatsResponse(gameId, [], requestedPlayers, []);
@@ -145,8 +123,6 @@ public partial class FotMobWorldCupScraper(IHttpClientFactory httpClientFactory,
 
         return document.RootElement.Clone();
     }
-
-    private bool UseMockMode() => bool.TryParse(configuration["FotMob:MockMode"], out var mockMode) && mockMode;
 
     private bool UseFixtureData() => bool.TryParse(configuration["FotMob:UseFixtureData"], out var useFixtureData) && useFixtureData;
 

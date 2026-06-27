@@ -96,8 +96,6 @@ record DraftAccessRequest(string Passkey);
 
 record DraftStartRequest(string Passkey, string? DraftOrderMode);
 
-record TestingGameStatusRequest(bool Started, bool Finished, string? Score = null);
-
 record DraftPickErrorResponse(string Message);
 
 record DraftLiveClientMessage(string? Type, int? RevealedCount);
