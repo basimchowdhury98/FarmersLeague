@@ -56,7 +56,7 @@ export class App {
   protected readonly livePointChanges = signal<LivePointChange[]>([]);
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
-  protected readonly draftPickFlight = signal<DraftPickFlight | null>(null);
+  protected readonly draftPickFlights = signal<DraftPickFlight[]>([]);
   protected readonly draftOrderReveal = signal<DraftOrderReveal | null>(null);
   protected readonly recentlyDraftedPlayer = signal('');
   protected readonly isDraftOrderModeDialogOpen = signal(false);
@@ -70,8 +70,7 @@ export class App {
   private liveMatchSocket: WebSocket | null = null;
   private draftPickFlightId = 0;
   private livePointChangeId = 0;
-  private activeDraftPickFlightKey = '';
-  private draftPickFlightTimeout: number | null = null;
+  private draftPickFlightTimeouts = new Map<number, number>();
   private draftedHighlightTimeout: number | null = null;
   private liveFeedPulseTimeout: number | null = null;
   private livePointChangeTimeouts = new Map<number, number>();
@@ -1038,36 +1037,26 @@ export class App {
 
     const newPick = this.newDraftPick(currentDraft, response);
     if (!newPick) {
-      if (!this.isActiveDraftPickFlight(response)) {
-        this.draft.set(response);
-      }
-
-      return;
-    }
-
-    const flightKey = this.draftPickKey(newPick);
-    if (flightKey === this.activeDraftPickFlightKey) {
+      this.draft.set(response);
       return;
     }
 
     const flight = this.createDraftPickFlight(newPick);
+    this.draft.set(response);
+
     if (!flight) {
-      this.draft.set(response);
       this.highlightDraftedPlayer(newPick.playerName);
       return;
     }
 
-    this.clearDraftPickFlightTimeout();
-    this.activeDraftPickFlightKey = flightKey;
-    this.draftPickFlight.set(flight);
+    this.draftPickFlights.update((flights) => [...flights, flight]);
 
-    this.draftPickFlightTimeout = window.setTimeout(() => {
-      this.draft.set(response);
-      this.draftPickFlight.set(null);
-      this.activeDraftPickFlightKey = '';
-      this.draftPickFlightTimeout = null;
+    const timeout = window.setTimeout(() => {
+      this.draftPickFlights.update((flights) => flights.filter((currentFlight) => currentFlight.id !== flight.id));
+      this.draftPickFlightTimeouts.delete(flight.id);
       this.highlightDraftedPlayer(newPick.playerName);
     }, draftPickFlightDurationMs);
+    this.draftPickFlightTimeouts.set(flight.id, timeout);
   }
 
   private newDraftPick(currentDraft: DraftResponse, nextDraft: DraftResponse) {
@@ -1077,10 +1066,6 @@ export class App {
 
     const currentPickKeys = new Set(currentDraft.picks.map((pick) => this.draftPickKey(pick)));
     return nextDraft.picks.find((pick) => !currentPickKeys.has(this.draftPickKey(pick))) ?? null;
-  }
-
-  private isActiveDraftPickFlight(response: DraftResponse) {
-    return response.picks.some((pick) => this.draftPickKey(pick) === this.activeDraftPickFlightKey);
   }
 
   private createDraftPickFlight(pick: DraftPick): DraftPickFlight | null {
@@ -1124,15 +1109,6 @@ export class App {
       this.recentlyDraftedPlayer.set('');
       this.draftedHighlightTimeout = null;
     }, draftedHighlightDurationMs);
-  }
-
-  private clearDraftPickFlightTimeout() {
-    if (this.draftPickFlightTimeout === null) {
-      return;
-    }
-
-    window.clearTimeout(this.draftPickFlightTimeout);
-    this.draftPickFlightTimeout = null;
   }
 
   private startDraftOrderReveal(draft: DraftResponse) {

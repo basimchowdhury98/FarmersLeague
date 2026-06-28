@@ -518,7 +518,7 @@
         </div>
       </section>
 
-      @if (draftPickFlight(); as flight) {
+      @for (flight of draftPickFlights(); track flight.id) {
         <div
           class="draft-pick-flight"
           aria-hidden="true"
