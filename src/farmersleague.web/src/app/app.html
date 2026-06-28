@@ -255,7 +255,6 @@
                             type="button"
                             [class.live-player-current-user]="owner && isLivePlayerCurrentUser(starter.name)"
                             [class.live-player-opponent]="owner && !isLivePlayerCurrentUser(starter.name)"
-                            [disabled]="!owner && !starter.isSubbedOff"
                             [attr.data-test]="owner ? 'live-player-card' : null"
                             [attr.data-owner]="owner"
                             [attr.data-current-user-player]="owner && isLivePlayerCurrentUser(starter.name) ? 'true' : null"
@@ -345,6 +344,19 @@
                   <p class="live-player-no-stats" data-test="live-player-no-scoring-stats">No scoring stats yet</p>
                 } @else {
                   <p class="live-player-no-stats" data-test="live-player-no-stats">No stats available yet</p>
+                }
+
+                @if (canShowLiveSubstitutionAction(selectedPlayer)) {
+                  <div class="draft-lobby">
+                    <button
+                      type="button"
+                      data-test="live-substitution-button"
+                      [disabled]="!isLiveSubstitutionAvailable()"
+                    >Substitute into my squad</button>
+                    @if (!isLiveSubstitutionAvailable()) {
+                      <p data-test="live-substitution-unavailable-reason">Available when the match starts</p>
+                    }
+                  </div>
                 }
 
                 <button type="button" class="live-player-dialog-close" data-test="live-player-dialog-close" (click)="closeLivePlayerStats()">Close</button>

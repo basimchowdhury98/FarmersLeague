@@ -700,20 +700,30 @@ export class App {
       return;
     }
 
-    if (!starter.isSubbedOff) {
-      return;
-    }
-
     this.selectedLivePlayer.set({
       name: starter.name,
       teamName,
       categories: [],
-      substitution: {
-        minute: starter.subbedOffMinute ?? 0,
-        playerOnName: starter.subbedOnPlayerName ?? '',
-        injuredPlayerOut: starter.injuredSubstitution === true
-      }
+      substitution: starter.isSubbedOff
+        ? {
+            minute: starter.subbedOffMinute ?? 0,
+            playerOnName: starter.subbedOnPlayerName ?? '',
+            injuredPlayerOut: starter.injuredSubstitution === true
+          }
+        : null
     });
+  }
+
+  protected canShowLiveSubstitutionAction(player: LivePlayer) {
+    const match = this.liveMatch()?.match;
+
+    return this.livePlayerOwner(player.name) === null && player.substitution === null && match?.hasFinished !== true;
+  }
+
+  protected isLiveSubstitutionAvailable() {
+    const match = this.liveMatch()?.match;
+
+    return match?.hasStarted === true && match.hasFinished !== true;
   }
 
   protected closeLivePlayerStats() {

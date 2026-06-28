@@ -1,14 +1,9 @@
-const fs = require('fs');
 const http = require('http');
-const path = require('path');
 
 const mockFotMob = require('./generator');
 
 const port = Number(process.env.PORT || 80);
-const siteRoot = path.join(__dirname, 'site');
 let demoStarted = false;
-
-mockFotMob.writeMockFotMobScenario();
 
 const demoMatch = {
   id: '1001',
@@ -18,6 +13,10 @@ const demoMatch = {
 
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+
+  if (url.pathname.startsWith('/__admin/')) {
+    return serveAdminRequest(request, response, url);
+  }
 
   if (url.pathname === '/') {
     return sendHtml(response, indexHtml());
@@ -82,10 +81,9 @@ function sleep(milliseconds) {
 }
 
 function serveMockPage(urlPath, response) {
-  const safePath = path.normalize(decodeURIComponent(urlPath)).replace(/^\.\.(\/|$)/, '');
-  const filePath = path.join(siteRoot, ...safePath.split('/').filter(Boolean));
+  const html = mockFotMob.getMockFotMobPage(urlPath);
 
-  if (!filePath.startsWith(siteRoot) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+  if (html === null) {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     return response.end('Not found');
   }
@@ -94,7 +92,87 @@ function serveMockPage(urlPath, response) {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store'
   });
-  return fs.createReadStream(filePath).pipe(response);
+  return response.end(html);
+}
+
+function serveAdminRequest(request, response, url) {
+  if (request.method !== 'POST') {
+    response.writeHead(405, { Allow: 'POST', 'Content-Type': 'text/plain; charset=utf-8' });
+    return response.end('Method not allowed');
+  }
+
+  readJsonBody(request)
+    .then((body) => handleAdminRequest(url.pathname, body))
+    .then((result) => sendJson(response, result ?? null))
+    .catch((error) => {
+      const status = error.statusCode ?? 500;
+      response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify({ error: error.message }));
+    });
+}
+
+function handleAdminRequest(pathname, body) {
+  if (pathname === '/__admin/reset') {
+    demoStarted = false;
+    return mockFotMob.resetMockFotMob();
+  }
+
+  const match = pathname.match(/^\/__admin\/matches\/([^/]+)\/(status|live-status|demo-step)$/);
+  if (!match) {
+    const error = new Error('Admin route not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const [, matchId, action] = match;
+
+  if (action === 'status') {
+    return mockFotMob.setMockFotMobMatchStatus({ matchId, status: body.status });
+  }
+
+  if (action === 'live-status') {
+    return mockFotMob.setMockFotMobLiveMatchStatus({ matchId, status: body.status });
+  }
+
+  return mockFotMob.setMockFotMobDemoStep({
+    matchId,
+    status: body.status,
+    statsLevel: body.statsLevel,
+    includeSubstitutions: body.includeSubstitutions
+  });
+}
+
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      body += chunk;
+    });
+    request.on('end', () => {
+      if (body.length === 0) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(body));
+      } catch (error) {
+        error.statusCode = 400;
+        reject(error);
+      }
+    });
+    request.on('error', reject);
+  });
+}
+
+function sendJson(response, value) {
+  response.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store'
+  });
+  response.end(JSON.stringify(value));
 }
 
 function sendHtml(response, html) {

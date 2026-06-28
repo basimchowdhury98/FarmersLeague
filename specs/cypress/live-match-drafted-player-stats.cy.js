@@ -275,6 +275,92 @@ describe('Live match drafted player stats', () => {
     });
   });
 
+  it('shows a disabled substitution action for undrafted starters before kickoff', () => {
+    completeDraft();
+    cy.arrangeUpcomingMatch(match.id);
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', homeStarters[3]).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button')
+        .should('be.visible')
+        .and('be.disabled')
+        .and('contain.text', 'Substitute into my squad');
+      cy.testGet('live-substitution-unavailable-reason')
+        .should('contain.text', 'Available when the match starts');
+    });
+  });
+
+  it('shows an enabled substitution action for undrafted starters after kickoff', () => {
+    completeDraft();
+    arrangeOngoingMatch();
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', homeStarters[3]).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button')
+        .should('be.visible')
+        .and('be.enabled')
+        .and('contain.text', 'Substitute into my squad');
+      cy.testGet('live-substitution-unavailable-reason').should('not.exist');
+    });
+  });
+
+  it('does not show a substitution action for already drafted players', () => {
+    completeDraft();
+    arrangeOngoingMatch();
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', homeStarters[0]).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button').should('not.exist');
+      cy.testGet('live-substitution-unavailable-reason').should('not.exist');
+    });
+  });
+
+  it('does not show a substitution action for players drafted by opponents', () => {
+    completeDraft();
+    arrangeOngoingMatch();
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', awayStarters[0]).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button').should('not.exist');
+      cy.testGet('live-substitution-unavailable-reason').should('not.exist');
+    });
+  });
+
+  it('does not show a substitution action for undrafted players who have been subbed off', () => {
+    completeDraft();
+    arrangeOngoingMatch();
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', 'Jonathan David').find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-player-dialog-subbed-off').should('contain.text', 'Subbed off 79\'');
+      cy.testGet('live-substitution-button').should('not.exist');
+      cy.testGet('live-substitution-unavailable-reason').should('not.exist');
+    });
+  });
+
+  it('does not show a substitution action after the match is finished', () => {
+    completeDraft();
+    arrangeFinishedMatch();
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', homeStarters[3]).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button').should('not.exist');
+      cy.testGet('live-substitution-unavailable-reason').should('not.exist');
+    });
+  });
+
   it('loads the first scraper stats state and shows scoring stat fields for drafted players', () => {
     completeDraft();
 

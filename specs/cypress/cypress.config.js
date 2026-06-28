@@ -1,8 +1,8 @@
 const { defineConfig } = require('cypress');
-const mockFotMob = require('../mock-fotmob/generator');
 const { createTestStateStore } = require('./test-state');
 
 const testState = createTestStateStore();
+const mockFotMobAdminUrl = process.env.MOCK_FOTMOB_ADMIN_URL ?? 'http://localhost:8081';
 
 module.exports = defineConfig({
   screenshotOnRunFailure: false,
@@ -12,10 +12,9 @@ module.exports = defineConfig({
     supportFile: 'cypress/support/commands.js',
     setupNodeEvents(on) {
       on('task', {
-        resetMockFotMob: mockFotMob.resetMockFotMob,
-        setMockFotMobMatchStatus: mockFotMob.setMockFotMobMatchStatus,
-        setMockFotMobLiveMatchStatus: mockFotMob.setMockFotMobLiveMatchStatus,
-        writeMockFotMobScenario: mockFotMob.writeMockFotMobScenario,
+        resetMockFotMob: () => postMockFotMobAdmin('/__admin/reset'),
+        setMockFotMobMatchStatus: ({ matchId, status }) => postMockFotMobAdmin(`/__admin/matches/${matchId}/status`, { status }),
+        setMockFotMobLiveMatchStatus: ({ matchId, status }) => postMockFotMobAdmin(`/__admin/matches/${matchId}/live-status`, { status }),
         resetHomeMatches: () => testState.resetHomeMatches(),
         matchIsUpcoming: ({ matchId }) => testState.matchIsUpcoming(matchId),
         matchIsOngoing: ({ matchId, score }) => testState.matchIsOngoing(matchId, { score }),
@@ -31,3 +30,17 @@ module.exports = defineConfig({
     }
   }
 });
+
+async function postMockFotMobAdmin(path, body = {}) {
+  const response = await fetch(new URL(path, mockFotMobAdminUrl), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Mock FotMob admin ${path} failed with ${response.status}: ${await response.text()}`);
+  }
+
+  return null;
+}

@@ -1,8 +1,3 @@
-const fs = require('fs');
-const path = require('path');
-
-const siteRoot = path.join(__dirname, 'site');
-
 const defaultStatuses = {
   1001: { started: false, finished: false, score: null },
   1002: { started: false, finished: false, score: null },
@@ -40,19 +35,16 @@ function resetMockFotMob() {
   state.statuses = { ...defaultStatuses };
   state.liveStatuses = {};
   state.demoSteps = {};
-  writeMockFotMobScenario();
   return null;
 }
 
 function setMockFotMobMatchStatus({ matchId, status }) {
   state.statuses[String(matchId)] = normalizeStatus(status);
-  writeMockFotMobScenario();
   return null;
 }
 
 function setMockFotMobLiveMatchStatus({ matchId, status }) {
   state.liveStatuses[String(matchId)] = normalizeStatus(status);
-  writeMockFotMobScenario();
   return null;
 }
 
@@ -63,23 +55,18 @@ function setMockFotMobDemoStep({ matchId, status, statsLevel = null, includeSubs
   state.statuses[id] = normalizedStatus;
   state.liveStatuses[id] = normalizedStatus;
   state.demoSteps[id] = { statsLevel, includeSubstitutions };
-  writeMockFotMobScenario();
   return null;
 }
 
-function writeMockFotMobScenario() {
-  fs.mkdirSync(siteRoot, { recursive: true });
-  for (const entry of fs.readdirSync(siteRoot)) {
-    fs.rmSync(path.join(siteRoot, entry), { recursive: true, force: true });
+function getMockFotMobPage(urlPath) {
+  const normalizedPath = normalizeUrlPath(urlPath);
+
+  if (normalizedPath === '/leagues/77/fixtures/world-cup') {
+    return renderFotMobHtml(fixturesNextData());
   }
 
-  writePage('/leagues/77/fixtures/world-cup', fixturesNextData());
-
-  for (const fixture of matches) {
-    writePage(fixture.pageUrl, matchNextData(fixture));
-  }
-
-  return null;
+  const fixture = matches.find((matchValue) => matchValue.pageUrl === normalizedPath);
+  return fixture ? renderFotMobHtml(matchNextData(fixture)) : null;
 }
 
 function normalizeStatus(status = {}) {
@@ -471,10 +458,9 @@ function stat(key, value) {
   return { key, stat: { value, total: null, type: null } };
 }
 
-function writePage(urlPath, nextData) {
-  const outputPath = path.join(siteRoot, ...urlPath.split('/').filter(Boolean));
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, renderFotMobHtml(nextData));
+function normalizeUrlPath(urlPath) {
+  const normalizedPath = `/${String(urlPath).split('?')[0].split('/').filter(Boolean).join('/')}`;
+  return normalizedPath === '/' ? '/' : normalizedPath;
 }
 
 function renderFotMobHtml(nextData) {
@@ -488,7 +474,7 @@ module.exports = {
   setMockFotMobMatchStatus,
   setMockFotMobLiveMatchStatus,
   setMockFotMobDemoStep,
-  writeMockFotMobScenario
+  getMockFotMobPage
 };
 
 if (require.main === module) {
