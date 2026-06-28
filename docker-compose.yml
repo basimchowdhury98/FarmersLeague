@@ -1,8 +1,12 @@
 services:
   mock-fotmob:
-    image: nginx:1.27-alpine
+    image: node:22-alpine
+    working_dir: /mock-fotmob
+    command: node server.js
+    ports:
+      - "8081:80"
     volumes:
-      - ./specs/mock-fotmob/site:/usr/share/nginx/html:ro
+      - ./specs/mock-fotmob:/mock-fotmob
 
   app:
     build:

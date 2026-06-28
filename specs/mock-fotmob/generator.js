@@ -12,7 +12,8 @@ const defaultStatuses = {
 
 const state = {
   statuses: { ...defaultStatuses },
-  liveStatuses: {}
+  liveStatuses: {},
+  demoSteps: {}
 };
 
 const matches = [
@@ -38,6 +39,7 @@ function match(id, homeName, homeShortName, homeId, awayName, awayShortName, awa
 function resetMockFotMob() {
   state.statuses = { ...defaultStatuses };
   state.liveStatuses = {};
+  state.demoSteps = {};
   writeMockFotMobScenario();
   return null;
 }
@@ -50,6 +52,17 @@ function setMockFotMobMatchStatus({ matchId, status }) {
 
 function setMockFotMobLiveMatchStatus({ matchId, status }) {
   state.liveStatuses[String(matchId)] = normalizeStatus(status);
+  writeMockFotMobScenario();
+  return null;
+}
+
+function setMockFotMobDemoStep({ matchId, status, statsLevel = null, includeSubstitutions = false }) {
+  const id = String(matchId);
+  const normalizedStatus = normalizeStatus(status);
+
+  state.statuses[id] = normalizedStatus;
+  state.liveStatuses[id] = normalizedStatus;
+  state.demoSteps[id] = { statsLevel, includeSubstitutions };
   writeMockFotMobScenario();
   return null;
 }
@@ -73,7 +86,8 @@ function normalizeStatus(status = {}) {
   return {
     started: Boolean(status.started),
     finished: Boolean(status.finished),
-    score: status.score ?? null
+    score: status.score ?? null,
+    liveTime: status.liveTime ?? null
   };
 }
 
@@ -106,6 +120,7 @@ function fixturesNextData() {
 
 function matchNextData(fixture) {
   const liveStatus = state.liveStatuses[fixture.id] ?? state.statuses[fixture.id];
+  const demoStep = state.demoSteps[fixture.id] ?? null;
 
   return {
     props: {
@@ -117,10 +132,10 @@ function matchNextData(fixture) {
         },
         content: {
           lineup: lineupFor(fixture.id),
-          playerStats: playerStatsFor(fixture.id),
+          playerStats: playerStatsFor(fixture.id, demoStep?.statsLevel),
           matchFacts: {
             events: {
-              events: substitutionsFor(fixture.id)
+              events: substitutionsFor(fixture.id, demoStep?.includeSubstitutions)
             }
           }
         }
@@ -145,7 +160,7 @@ function statusJson(fixture, status = {}) {
     reason: normalized.finished
       ? { short: 'FT', shortKey: 'fulltime_short', long: 'Full-Time', longKey: 'finished' }
       : { short: null, shortKey: null, long: 'Mock FotMob fixture', longKey: null },
-    liveTime: normalized.started && !normalized.finished ? '45\'' : null
+    liveTime: normalized.liveTime ?? (normalized.started && !normalized.finished ? '45\'' : null)
   };
 }
 
@@ -236,8 +251,8 @@ function player(id, name, shirtNumber, positionId, row = null, column = null) {
   };
 }
 
-function substitutionsFor(matchId) {
-  if (matchId !== '1001') {
+function substitutionsFor(matchId, includeSubstitutions = true) {
+  if (matchId !== '1001' || !includeSubstitutions) {
     return [];
   }
 
@@ -262,7 +277,7 @@ function substitution(time, isHome, playerOnId, playerOnName, playerOffId, playe
   };
 }
 
-function playerStatsFor(matchId) {
+function playerStatsFor(matchId, statsLevel = null) {
   if (matchId !== '1001') {
     return {};
   }
@@ -274,7 +289,81 @@ function playerStatsFor(matchId) {
     ...mexicoBench().map((p) => ({ ...p, teamId: '42', teamName: 'Mexico' }))
   ];
 
-  return Object.fromEntries(allPlayers.map((p, index) => [p.id, playerStatsPlayer(p, index)]));
+  return Object.fromEntries(allPlayers.map((p, index) => [
+    p.id,
+    statsLevel === null ? playerStatsPlayer(p, index) : demoPlayerStatsPlayer(p, index, statsLevel)
+  ]));
+}
+
+function demoPlayerStatsPlayer(playerValue, index, statsLevel) {
+  const level = Math.max(0, Math.min(Number(statsLevel) || 0, 5));
+  const isGoalkeeper = playerValue.positionId === 0;
+  const isSubstitute = playerValue.positionId === null;
+  const hasPlayed = !isSubstitute || (level >= 4 && playerValue.name === 'Canada Substitute 1');
+  const goals = level >= 3 && playerValue.name === 'Jonathan David' ? 1 : 0;
+  const assists = level >= 3 && playerValue.name === 'Tajon Buchanan' ? 1 : 0;
+  const saves = isGoalkeeper && hasPlayed ? Math.min(level, 3) : 0;
+  const passes = hasPlayed ? level * 7 + (index % 4) : 0;
+  const shots = hasPlayed && level >= 2 ? goals + 1 : 0;
+  const active = hasPlayed ? level : 0;
+
+  return {
+    id: playerValue.id,
+    optaId: null,
+    name: playerValue.name,
+    teamId: playerValue.teamId,
+    teamName: playerValue.teamName,
+    shirtNumber: String(playerValue.shirtNumber),
+    isGoalkeeper,
+    stats: [
+      statGroup('attack', {
+        Goals: stat('goals', goals),
+        'Expected goals': stat('expected_goals', goals ? 0.72 : level * 0.03),
+        'Expected goals on target': stat('expected_goals_on_target_variant', goals ? 0.64 : level * 0.02),
+        'Total shots': stat('total_shots', shots),
+        'Shots on target': stat('ShotsOnTarget', goals ? 2 : level >= 2 && hasPlayed ? 1 : 0),
+        'Touches in opposition box': stat('touches_opp_box', hasPlayed ? level : 0),
+        'Successful dribbles': stat('dribbles_succeeded', hasPlayed ? level % 3 : 0),
+        'Big chances missed': stat('big_chance_missed_title', 0)
+      }),
+      statGroup('passes', {
+        Touches: stat('touches', passes + active),
+        'Accurate passes': stat('accurate_passes', passes),
+        Assists: stat('assists', assists),
+        'Expected assists': stat('expected_assists', assists ? 0.5 : level * 0.02),
+        'Chances created': stat('chances_created', assists + (hasPlayed && level >= 2 ? 1 : 0)),
+        'Passes into final third': stat('passes_into_final_third', hasPlayed ? Math.max(0, level - 1) : 0),
+        'Accurate crosses': stat('accurate_crosses', hasPlayed && level >= 3 ? 1 : 0),
+        'Accurate long balls': stat('long_balls_accurate', hasPlayed ? Math.max(0, level - 2) : 0)
+      }),
+      statGroup('defense', {
+        'Defensive actions': stat('defensive_actions', active),
+        Tackles: stat('matchstats.headers.tackles', isGoalkeeper || !hasPlayed ? 0 : Math.min(level, 2)),
+        Interceptions: stat('interceptions', hasPlayed && level >= 2 ? 1 : 0),
+        'Shot blocks': stat('shot_blocks', hasPlayed && level >= 4 ? 1 : 0),
+        Recoveries: stat('recoveries', active + (hasPlayed ? 1 : 0)),
+        Clearances: stat('clearances', isGoalkeeper || !hasPlayed ? 0 : Math.min(level, 3)),
+        'Headed clearances': stat('headed_clearance', hasPlayed && level >= 3 ? 1 : 0),
+        'Dribbled past': stat('dribbled_past', 0)
+      }),
+      statGroup('duels', {
+        'Duels won': stat('duel_won', hasPlayed ? Math.min(level, 3) : 0),
+        'Duels lost': stat('duel_lost', hasPlayed && level >= 2 ? 1 : 0),
+        'Ground duels won': stat('ground_duels_won', hasPlayed ? Math.min(level, 2) : 0),
+        'Aerial duels won': stat('aerials_won', hasPlayed && level >= 3 ? 1 : 0),
+        Fouls: stat('fouls', hasPlayed && level >= 3 ? 1 : 0),
+        'Was fouled': stat('was_fouled', hasPlayed && level >= 2 ? 1 : 0)
+      }),
+      ...(isGoalkeeper ? [statGroup('goalkeeping', {
+        Saves: stat('saves', saves),
+        'Goals conceded': stat('goals_conceded', level >= 5 ? 0 : 0),
+        'Expected goals on target faced': stat('expected_goals_on_target_faced', level * 0.2),
+        'Goals prevented': stat('goals_prevented', level * 0.1),
+        'Keeper sweeper': stat('keeper_sweeper', level >= 2 ? 1 : 0),
+        'High claims': stat('keeper_high_claim', level >= 3 ? 1 : 0)
+      })] : [])
+    ]
+  };
 }
 
 function playerStatsPlayer(playerValue, index) {
@@ -398,6 +487,7 @@ module.exports = {
   resetMockFotMob,
   setMockFotMobMatchStatus,
   setMockFotMobLiveMatchStatus,
+  setMockFotMobDemoStep,
   writeMockFotMobScenario
 };
 

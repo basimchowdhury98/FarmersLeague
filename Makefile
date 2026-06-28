@@ -6,9 +6,11 @@ CYPRESS_SPECS := *.cy.js
 
 mock:
 	node specs/mock-fotmob/generator.js
-	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=continuous docker compose up --build -d
+	trap 'docker compose down' EXIT; \
+	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=pulsing LIVE_MATCH_REFRESH_INTERVAL_SECONDS=2 docker compose up --build
 
 run:
+	trap 'docker compose down' EXIT; \
 	docker compose up --build app redis
 
 stat:
