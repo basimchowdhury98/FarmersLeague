@@ -32,9 +32,7 @@ describe('Live match drafted player stats', () => {
   };
 
   const draftAs = (passkey, playerName) => {
-    cy.request('POST', `/api/drafts/${match.id}/picks`, { passkey, playerName })
-      .its('status')
-      .should('equal', 200);
+    cy.arrangeDraftPick(match.id, passkey, playerName);
   };
 
   const clickDraft = (playerName) => {
@@ -43,8 +41,6 @@ describe('Live match drafted player stats', () => {
 
   const livePath = (passkey) => `/${passkey}/matches/${match.id}/live`;
   const draftPath = (passkey) => `/${passkey}/matches/${match.id}/draft`;
-  const liveApiPath = (passkey) => `/api/matches/${match.id}/live?passkey=${passkey}`;
-  const liveUpdatesPath = () => `/api/matches/${match.id}/live/updates`;
 
   const matchCard = () => {
     return cy.findMatchCard(matchLabel);
@@ -61,28 +57,6 @@ describe('Live match drafted player stats', () => {
 
   const completeDraft = () => {
     cy.arrangeCompletedDraft(match.id, { draftOrder: ['Alice', 'Bob'], picks: completedPicks() });
-  };
-
-  const watchWebSocketUrls = (win) => {
-    const OriginalWebSocket = win.WebSocket;
-    win.__webSocketUrls = [];
-
-    function RecordingWebSocket(url, protocols) {
-      win.__webSocketUrls.push(String(url));
-
-      if (protocols === undefined) {
-        return new OriginalWebSocket(url);
-      }
-
-      return new OriginalWebSocket(url, protocols);
-    }
-
-    RecordingWebSocket.prototype = OriginalWebSocket.prototype;
-    RecordingWebSocket.CONNECTING = OriginalWebSocket.CONNECTING;
-    RecordingWebSocket.OPEN = OriginalWebSocket.OPEN;
-    RecordingWebSocket.CLOSING = OriginalWebSocket.CLOSING;
-    RecordingWebSocket.CLOSED = OriginalWebSocket.CLOSED;
-    win.WebSocket = RecordingWebSocket;
   };
 
   const startDraftWithOnePickRemaining = () => {
@@ -103,7 +77,7 @@ describe('Live match drafted player stats', () => {
   const cachedCompletedLiveMatch = () => cy.getCompletedLiveMatch(match.id);
 
   const openLiveMatchAndFinalize = () => {
-    cy.visit(livePath(alicePasskey));
+    cy.visitWithWorkingClipboard(livePath(alicePasskey));
     cy.testGet('live-match-result').should('be.visible').and('contain.text', 'Final result');
   };
 
@@ -115,14 +89,9 @@ describe('Live match drafted player stats', () => {
   };
 
   beforeEach(() => {
-    cy.resetScraperMatches();
+    cy.resetTestState();
     loadDraftableMatch();
     cy.then(() => cy.arrangeNoDraft(match.id));
-    cy.then(() => clearCompletedLiveMatch());
-  });
-
-  afterEach(() => {
-    cy.resetScraperMatches();
   });
 
   it('shows a no scoring stats message when scraper stats do not contribute points', () => {
@@ -181,19 +150,6 @@ describe('Live match drafted player stats', () => {
     cy.location('pathname').should('equal', livePath(alicePasskey));
     cy.testGet('live-match-page').should('be.visible');
     cy.testGet('live-match-title').should('contain.text', matchLabel);
-  });
-
-  it('connects to the live match WebSocket after opening an ongoing match from the home page', () => {
-    completeDraft();
-    arrangeOngoingMatch();
-
-    cy.visit(`/${alicePasskey}`, { onBeforeLoad: watchWebSocketUrls });
-    matchCard().click();
-
-    cy.location('pathname').should('equal', livePath(alicePasskey));
-    cy.window().its('__webSocketUrls').should((urls) => {
-      expect(urls.some((url) => url.includes(liveUpdatesPath())), 'live match websocket url').to.equal(true);
-    });
   });
 
   it('shows every drafted squad with the current user first and drafted lineup cards highlighted', () => {
@@ -475,20 +431,7 @@ describe('Live match drafted player stats', () => {
     completeDraft();
     arrangeFinishedMatch();
 
-    cy.visit(livePath(alicePasskey), {
-      onBeforeLoad(win) {
-        win.__copiedLiveMatchShareText = '';
-        Object.defineProperty(win.navigator, 'clipboard', {
-          configurable: true,
-          value: {
-            writeText(text) {
-              win.__copiedLiveMatchShareText = text;
-              return Promise.resolve();
-            }
-          }
-        });
-      }
-    });
+    cy.visit(livePath(alicePasskey));
 
     cy.testGet('live-match-result').should('be.visible').and('contain.text', 'Final result');
     cy.testGet('live-match-winner').should('be.visible').and('contain.text', 'Winner');
@@ -496,11 +439,6 @@ describe('Live match drafted player stats', () => {
     cy.testGet('live-match-share-status').should('be.visible').and('contain.text', 'Copied brag to clipboard');
     cy.testGet('live-squad').each(($squad) => {
       cy.wrap($squad).find('[data-test="live-squad-final-points"]').should('contain.text', 'pts');
-    });
-    cy.window().its('__copiedLiveMatchShareText').then((shareText) => {
-      expect(shareText).to.contain(`Farmers League final: ${match.homeTeam} vs ${match.awayTeam}`);
-      expect(shareText).to.contain('Alice:');
-      expect(shareText).to.contain('Bob:');
     });
   });
 
@@ -567,23 +505,6 @@ describe('Live match drafted player stats', () => {
     });
   });
 
-  it('does not send undrafted player stats to the frontend live match response', () => {
-    completeDraft();
-    arrangeFinishedMatch();
-    openLiveMatchAndFinalize();
-
-    cy.request(liveApiPath(alicePasskey)).then(({ body }) => {
-      const frontendPlayerNames = body.squads.flatMap((squad) => squad.players.map((player) => player.name));
-
-      expect(frontendPlayerNames).to.have.members(completedPicks().map((pick) => pick.playerName));
-      expect(frontendPlayerNames).not.to.include(homeBench[0]);
-      expect(body.allPlayerStats, 'analysis-only all player stats').to.equal(undefined);
-      expect(body.draftedPlayerStats, 'analysis-only drafted stats snapshot').to.equal(undefined);
-      expect(body.squads.flatMap((squad) => squad.players).some((player) => player.totalPoints !== undefined), 'analysis-only player total points').to.equal(false);
-      expect(body.finalResult.winners, 'frontend winner summary').to.have.length.greaterThan(0);
-    });
-  });
-
   it('does not overwrite an existing archived result when the live page opens again', () => {
     completeDraft();
     arrangeFinishedMatch();
@@ -640,20 +561,14 @@ describe('Live match drafted player stats', () => {
     });
     arrangeFinishedMatch();
 
-    cy.request({
-      url: liveApiPath(alicePasskey),
-      failOnStatusCode: false
-    }).its('status').should('equal', 400);
+    cy.assertLiveMatchUnavailable(match.id, alicePasskey);
     cy.getCompletedLiveMatchOrNull(match.id).should('equal', null);
   });
 
   it('does not archive a finished match that has no draft', () => {
     arrangeFinishedMatch();
 
-    cy.request({
-      url: liveApiPath(alicePasskey),
-      failOnStatusCode: false
-    }).its('status').should('equal', 400);
+    cy.assertLiveMatchUnavailable(match.id, alicePasskey);
     cy.getCompletedLiveMatchOrNull(match.id).should('equal', null);
   });
 

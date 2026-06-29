@@ -21,7 +21,7 @@ stat:
 val:
 	set -e; \
 	trap 'docker compose down' EXIT; \
-	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=continuous docker compose up --build -d; \
+	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=continuous DISABLE_MOCK_FOTMOB_DEMO=true docker compose up --build -d; \
 	until curl -fsS http://localhost:8080/api/hello >/dev/null 2>&1; do sleep 1; done; \
 	if [ -f specs/cypress/package-lock.json ]; then npm --prefix specs/cypress ci; else npm --prefix specs/cypress install; fi; \
 	npm --prefix specs/cypress test -- --spec "$(CYPRESS_SPECS)"

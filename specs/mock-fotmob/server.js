@@ -3,6 +3,7 @@ const http = require('http');
 const mockFotMob = require('./generator');
 
 const port = Number(process.env.PORT || 80);
+const demoDisabled = process.env.DISABLE_MOCK_FOTMOB_DEMO === 'true';
 let demoStarted = false;
 
 const demoMatch = {
@@ -23,6 +24,11 @@ const server = http.createServer((request, response) => {
   }
 
   if (url.pathname === `/demo/${demoMatch.id}`) {
+    if (demoDisabled) {
+      response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return response.end('Demo disabled');
+    }
+
     startDemo();
     response.writeHead(302, { Location: demoMatch.path });
     return response.end();
@@ -184,9 +190,14 @@ function sendHtml(response, html) {
 }
 
 function indexHtml() {
-  const demoNote = demoStarted
+  const demoNote = demoDisabled
+    ? '<p>The demo is disabled in this environment.</p>'
+    : demoStarted
     ? '<p>The demo has already started. Restart the containers to run it again.</p>'
     : '<p>Click the game to start the one-shot 3 minute demo.</p>';
+  const demoLink = demoDisabled
+    ? ''
+    : `<a href="/demo/${demoMatch.id}">${demoMatch.label}</a><p>This starts the scripted live match and opens the mock FotMob match page.</p>`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -204,8 +215,7 @@ function indexHtml() {
   <h1>Mock FotMob</h1>
   ${demoNote}
   <div class="card">
-    <a href="/demo/${demoMatch.id}">${demoMatch.label}</a>
-    <p>This starts the scripted live match and opens the mock FotMob match page.</p>
+    ${demoLink}
   </div>
   <p><a href="/leagues/77/fixtures/world-cup">World Cup fixtures page</a></p>
 </body>

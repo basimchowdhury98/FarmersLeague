@@ -40,9 +40,7 @@ describe('Match draft page', () => {
   };
 
   const draftAs = (passkey, playerName) => {
-    cy.request('POST', `/api/drafts/${match.id}/picks`, { passkey, playerName })
-      .its('status')
-      .should('equal', 200);
+    cy.arrangeDraftPick(match.id, passkey, playerName);
   };
 
   const assertTurnQueue = (turns) => {
@@ -252,22 +250,7 @@ describe('Match draft page', () => {
   it('shows an error when live draft updates are unavailable', () => {
     setAliceBobDraft();
 
-    cy.visit(draftPath(alicePasskey), {
-      onBeforeLoad(win) {
-        class FailingWebSocket extends win.EventTarget {
-          constructor() {
-            super();
-            setTimeout(() => this.dispatchEvent(new win.Event('error')), 0);
-          }
-
-          close() {}
-
-          send() {}
-        }
-
-        win.WebSocket = FailingWebSocket;
-      }
-    });
+    cy.visitWithFailingWebSocket(draftPath(alicePasskey));
 
     cy.testGet('draft-live-error').should('be.visible').and('contain.text', 'Live updates unavailable');
   });

@@ -4,9 +4,20 @@ Testing principles:
 
 - Each `it` should verify one unit of observable behavior.
 - Each `it` should have one primary reason to fail: the behavior under test changed.
-- Arrange state through domain commands in `cypress/support/commands.js`, not raw Redis/cache shapes.
+- Arrange state through test-specific domain commands in `cypress/support/commands.js`, not raw Redis/cache shapes or UI setup flows.
+- Act through the UI only. The act should be one specific user behavior, such as clicking a draft button or opening a match card.
 - Prefer user-visible/API-visible outcomes over implementation details.
+- Prefer UI-visible outcomes over implementation details. Use test-specific API assertions only when the UI cannot prove the important state change.
 - Use browser or network monkey-patching only when the behavior itself is about that browser/network integration.
+
+Arrange / Act / Assert contract:
+
+- Arrange: use Cypress domain commands/tasks that set Redis-backed app state and mock FotMob state.
+- Act: use browser UI interactions only, and keep each test to one behavior under test.
+- Assert: prefer UI assertions. Non-UI assertions must go through named test-specific commands and should be rare.
+- Do not use UI flows to create unrelated preconditions. If a draft must already exist, arrange it directly.
+- Do not call raw `cy.request(...)`, raw `cy.task(...)`, or response-stubbing `cy.intercept(...)` from specs. Add a named domain command first.
+- Do not duplicate a backend/cache assertion when the UI already proves the write succeeded.
 
 Conventions:
 

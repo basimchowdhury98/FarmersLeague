@@ -13,6 +13,11 @@ module.exports = defineConfig({
     setupNodeEvents(on) {
       on('task', {
         resetMockFotMob: () => postMockFotMobAdmin('/__admin/reset'),
+        resetTestState: async () => {
+          await postMockFotMobAdmin('/__admin/reset');
+          await testState.resetTestState();
+          return null;
+        },
         setMockFotMobMatchStatus: ({ matchId, status }) => postMockFotMobAdmin(`/__admin/matches/${matchId}/status`, { status }),
         setMockFotMobLiveMatchStatus: ({ matchId, status }) => postMockFotMobAdmin(`/__admin/matches/${matchId}/live-status`, { status }),
         resetHomeMatches: () => testState.resetHomeMatches(),

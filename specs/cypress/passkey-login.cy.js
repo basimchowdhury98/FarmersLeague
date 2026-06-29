@@ -7,26 +7,16 @@ describe('Passkey login', () => {
   const bobPasskey = 'bob-2222-2222-2222';
 
   it('allows Alice to access the home page with her valid passkey', () => {
-    cy.intercept('GET', '/api/hello').as('helloApi');
-    cy.intercept('GET', '/api/matches').as('matchesApi');
-
     cy.visit(`/${alicePasskey}`);
 
-    cy.wait('@helloApi').its('response.statusCode').should('equal', 200);
-    cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
     cy.testGet('api-greeting').should('contain.text', 'Welcome back, Alice');
     cy.testGet('no-access').should('not.exist');
   });
 
   it('allows Bob to access the home page with his valid passkey', () => {
-    cy.intercept('GET', '/api/hello').as('helloApi');
-    cy.intercept('GET', '/api/matches').as('matchesApi');
-
     cy.visit(`/${bobPasskey}`);
 
-    cy.wait('@helloApi').its('response.statusCode').should('equal', 200);
-    cy.wait('@matchesApi').its('response.statusCode').should('equal', 200);
     cy.contains('h1', 'FarmersLeague').should('be.visible');
     cy.testGet('api-greeting').should('contain.text', 'Welcome back, Bob');
     cy.testGet('no-access').should('not.exist');

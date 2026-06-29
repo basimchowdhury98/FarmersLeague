@@ -29,17 +29,12 @@ describe('Draft rapid ABBA picks', () => {
   const clickDraft = (playerName) => {
     cy.contains('[data-test="draft-player"]', playerName)
       .find('button')
-      .click({ force: true });
+      .click();
   };
 
   beforeEach(() => {
-    cy.resetScraperMatches();
+    cy.resetTestState();
     loadDraftableMatch();
-    cy.then(() => cy.arrangeNoDraft(match.id));
-  });
-
-  afterEach(() => {
-    cy.resetScraperMatches();
     cy.then(() => cy.arrangeNoDraft(match.id));
   });
 

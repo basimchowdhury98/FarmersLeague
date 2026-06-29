@@ -29,6 +29,25 @@ class RedisTestStateStore {
     return this.withRedis((client) => client.del(this.homeMatchesKey)).then(() => null);
   }
 
+  async resetTestState() {
+    return this.withRedis(async (client) => {
+      const matches = await this.readHomeMatches(client);
+      if (matches.length > 0) {
+        await this.writeHomeMatches(client, matches.map((match) => ({
+          ...match,
+          hasStarted: false,
+          hasFinished: false,
+          score: null,
+          draft: null
+        })));
+      }
+
+      await this.deleteByPattern(client, `${this.redisPrefix}matches:*:lineups`);
+      await this.deleteByPattern(client, `${this.redisPrefix}live-matches:*:completed`);
+      return null;
+    });
+  }
+
   async setMatchStatus(matchId, status) {
     return this.updateHomeMatches((matches) => matches.map((match) => match.id === matchId
       ? {
@@ -156,6 +175,19 @@ class RedisTestStateStore {
       sldexp: '-1',
       data: value
     });
+  }
+
+  async deleteByPattern(client, pattern) {
+    let cursor = '0';
+
+    do {
+      const result = await client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      cursor = String(result.cursor);
+
+      if (result.keys.length > 0) {
+        await client.del(result.keys);
+      }
+    } while (cursor !== '0');
   }
 }
 

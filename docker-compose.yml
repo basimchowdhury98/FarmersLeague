@@ -7,6 +7,8 @@ services:
       - "8081:80"
     volumes:
       - ./specs/mock-fotmob:/mock-fotmob
+    environment:
+      - DISABLE_MOCK_FOTMOB_DEMO=${DISABLE_MOCK_FOTMOB_DEMO:-false}
 
   app:
     build:

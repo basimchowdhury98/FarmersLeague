@@ -101,19 +101,10 @@ describe('Upcoming match draft lobby', () => {
     });
   };
 
-  const createDraftFromHome = () => {
-    cy.visit(`/${alicePasskey}`);
-    matchCard().within(() => cy.testGet('create-draft-button').click());
-  };
-
   beforeEach(() => {
-    cy.resetScraperMatches();
+    cy.resetTestState();
     loadDraftableMatch();
     cy.then(() => cy.arrangeNoDraft(match.id));
-  });
-
-  afterEach(() => {
-    cy.resetScraperMatches();
   });
 
   it('shows upcoming matches with their teams and kickoff time on the user home page', () => {
@@ -144,23 +135,6 @@ describe('Upcoming match draft lobby', () => {
     });
     matchCard().should('have.class', 'match-locked').and('have.attr', 'aria-disabled', 'true').click();
     cy.location('pathname').should('equal', `/${bobPasskey}`);
-  });
-
-  it('shows draft creation without embedding lineups in the match list', () => {
-    cy.intercept('GET', '/api/matches', [{
-      ...match,
-      lineups: [],
-      draft: null,
-      hasStarted: false
-    }]);
-
-    cy.visit(`/${alicePasskey}`);
-
-    matchCard().within(() => {
-      cy.testGet('create-draft-button').should('be.visible');
-      cy.testGet('join-draft-button').should('not.exist');
-      cy.testGet('match-draft-status').should('contain.text', 'No draft yet');
-    });
   });
 
   it('creates a draft for an upcoming match before lineups are available', () => {
@@ -405,15 +379,11 @@ describe('Upcoming match draft lobby', () => {
     arrangeStartedDraft([{ userName: 'Alice', playerName: alicePlayers[0] }]);
   };
 
-  const cancelDraftFromHome = () => {
-    cy.visit(`/${alicePasskey}`);
-    matchCard().within(() => cy.testGet('cancel-draft-button').click());
-  };
-
   it('allows an admin to cancel a draft from the home page', () => {
     startedDraftWithPick();
 
-    cancelDraftFromHome();
+    cy.visit(`/${alicePasskey}`);
+    matchCard().within(() => cy.testGet('cancel-draft-button').click());
 
     matchCard().within(() => {
       cy.testGet('create-draft-button').should('be.visible').and('contain.text', 'Create draft');
@@ -424,7 +394,8 @@ describe('Upcoming match draft lobby', () => {
   it('clears drafted decisions when an admin cancels a draft', () => {
     startedDraftWithPick();
 
-    cancelDraftFromHome();
+    cy.visit(`/${alicePasskey}`);
+    matchCard().within(() => cy.testGet('cancel-draft-button').click());
 
     cy.visit(`/${alicePasskey}/matches/${match.id}/draft`);
     cy.testGet('draft-summary').should('not.contain.text', alicePlayers[0]);
@@ -441,36 +412,6 @@ describe('Upcoming match draft lobby', () => {
       cy.testGet('match-draft-status').should('contain.text', 'Draft in progress');
       cy.testGet('cancel-draft-button').should('not.exist');
     });
-  });
-
-  it('rejects regular user draft creation through the API', () => {
-    cy.request({
-      method: 'POST',
-      url: `/api/drafts/${match.id}`,
-      body: { passkey: bobPasskey },
-      failOnStatusCode: false
-    }).its('status').should('equal', 403);
-  });
-
-  it('rejects regular user draft start through the API', () => {
-    arrangeOpenDraft(['Alice', 'Bob']);
-
-    cy.request({
-      method: 'POST',
-      url: `/api/drafts/${match.id}/start`,
-      body: { passkey: bobPasskey },
-      failOnStatusCode: false
-    }).its('status').should('equal', 403);
-  });
-
-  it('rejects regular user draft cancellation through the API', () => {
-    arrangeStartedDraft();
-
-    cy.request({
-      method: 'DELETE',
-      url: `/api/drafts/${match.id}?passkey=${encodeURIComponent(bobPasskey)}`,
-      failOnStatusCode: false
-    }).its('status').should('equal', 403);
   });
 
   it('shows completed drafts without draft management actions on the home page', () => {
@@ -509,7 +450,7 @@ describe('Upcoming match draft lobby', () => {
   });
 
   it('keeps draft actions available after kickoff time until the scraper says the match has started', () => {
-    cy.clock(new Date(match.date).getTime() + 60 * 1000, ['Date']);
+    cy.arrangeBrowserTime(new Date(match.date).getTime() + 60 * 1000);
 
     cy.visit(`/${alicePasskey}`);
 

@@ -2,25 +2,46 @@ Cypress.Commands.add('testGet', (testId, options) => cy.get(`[data-test="${testI
 
 Cypress.Commands.add('findMatchCard', (matchLabel) => {
   const cardSelector = '[data-test="match-card"]';
-  const tabsToSearch = ['today-matches-tab', 'upcoming-matches-tab', 'past-matches-tab'];
 
-  const findInVisibleTab = () => cy.get('body').then(($body) => {
-    const matchingCard = $body.find(cardSelector).filter((_, card) => card.innerText.includes(matchLabel));
+  return cy.contains(cardSelector, matchLabel);
+});
 
-    if (matchingCard.length > 0) {
-      return cy.contains(cardSelector, matchLabel);
+Cypress.Commands.add('arrangeBrowserTime', (timestamp) => {
+  cy.clock(timestamp, ['Date']);
+});
+
+Cypress.Commands.add('visitWithWorkingClipboard', (url) => {
+  cy.visit(url, {
+    onBeforeLoad(win) {
+      Object.defineProperty(win.navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText() {
+            return Promise.resolve();
+          }
+        }
+      });
     }
-
-    const nextTab = tabsToSearch.shift();
-
-    if (!nextTab) {
-      return cy.contains(cardSelector, matchLabel);
-    }
-
-    return cy.testGet(nextTab).click().then(findInVisibleTab);
   });
+});
 
-  return findInVisibleTab();
+Cypress.Commands.add('visitWithFailingWebSocket', (url) => {
+  cy.visit(url, {
+    onBeforeLoad(win) {
+      class FailingWebSocket extends win.EventTarget {
+        constructor() {
+          super();
+          setTimeout(() => this.dispatchEvent(new win.Event('error')), 0);
+        }
+
+        close() {}
+
+        send() {}
+      }
+
+      win.WebSocket = FailingWebSocket;
+    }
+  });
 });
 
 Cypress.env('mockMatches', {
@@ -30,9 +51,8 @@ Cypress.env('mockMatches', {
   shortBench: 1004
 });
 
-Cypress.Commands.add('resetScraperMatches', () => {
-  cy.task('resetMockFotMob');
-  cy.task('resetHomeMatches');
+Cypress.Commands.add('resetTestState', () => {
+  cy.task('resetTestState');
 });
 
 Cypress.Commands.add('arrangeUpcomingMatch', (matchId) => {
@@ -115,6 +135,8 @@ Cypress.Commands.add('getMockMatch', (matchId) => cy.request('/api/matches').the
   return match;
 }));
 
+Cypress.Commands.add('getMockMatches', () => cy.request('/api/matches').then(({ body }) => body));
+
 Cypress.Commands.add('getDraftLineups', (matchId, passkey) => cy.request(`/api/drafts/${matchId}?passkey=${passkey}`).then(({ body: draft }) => {
   const lineups = draft.match?.lineups ?? [];
 
@@ -126,3 +148,18 @@ Cypress.Commands.add('getDraftLineups', (matchId, passkey) => cy.request(`/api/d
     awayBench: lineups[1]?.bench?.map((player) => player.name) ?? []
   };
 }));
+
+Cypress.Commands.add('arrangeDraftPick', (matchId, passkey, playerName) => {
+  cy.request('POST', `/api/drafts/${matchId}/picks`, { passkey, playerName })
+    .its('status')
+    .should('equal', 200);
+});
+
+Cypress.Commands.add('getDraftForSetup', (matchId, passkey) => cy.request(`/api/drafts/${matchId}?passkey=${passkey}`).then(({ body }) => body));
+
+Cypress.Commands.add('assertLiveMatchUnavailable', (matchId, passkey) => {
+  cy.request({
+    url: `/api/matches/${matchId}/live?passkey=${passkey}`,
+    failOnStatusCode: false
+  }).its('status').should('equal', 400);
+});
