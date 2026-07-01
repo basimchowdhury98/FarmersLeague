@@ -264,6 +264,25 @@ describe('Live match drafted player stats', () => {
     });
   });
 
+  it('enables substitution actions from a live tracker started update', () => {
+    completeDraft();
+    cy.arrangeUpcomingMatch(match.id);
+
+    cy.visit(livePath(alicePasskey));
+    cy.testGet('live-match-page').should('be.visible');
+
+    setScraperLiveMatchStatus({ started: true, finished: false });
+
+    cy.contains('[data-test="live-lineup-player"]', homeStarters[3]).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button', { timeout: 35000 })
+        .should('be.visible')
+        .and('be.enabled')
+        .and('contain.text', 'Substitute into my squad');
+      cy.testGet('live-substitution-unavailable-reason').should('not.exist');
+    });
+  });
+
   it('does not show a substitution action for already drafted players', () => {
     completeDraft();
     arrangeOngoingMatch();

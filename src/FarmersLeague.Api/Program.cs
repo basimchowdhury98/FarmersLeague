@@ -1053,6 +1053,7 @@ static LiveMatchResponse ToCompletedLiveMatchResponse(MatchResponse match, Draft
 
 static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, PlayerStatsResponse? stats, CompletedLiveMatchResult? completed = null)
 {
+    match = stats?.Status is null ? match : WithPlayerStatsMatchStatus(match, stats.Status);
     match = stats?.Substitutions.Count > 0 ? WithSubstitutions(match, stats.Substitutions) : match;
     var playersByName = stats?.Players.ToDictionary(player => player.Name, StringComparer.Ordinal) ?? [];
     var substitutionsByPlayerName = stats?.Substitutions
@@ -1076,6 +1077,13 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
 
     return new LiveMatchResponse(match, squads, finalResult);
 }
+
+static MatchResponse WithPlayerStatsMatchStatus(MatchResponse match, PlayerStatsMatchStatusResponse status) => match with
+{
+    HasStarted = match.HasStarted || status.Started || status.Finished,
+    HasFinished = match.HasFinished || status.Finished || IsFullTime(status),
+    Score = status.Score ?? match.Score
+};
 
 static MatchResponse WithSubstitutions(MatchResponse match, IReadOnlyList<MatchSubstitutionResponse> substitutions)
 {
