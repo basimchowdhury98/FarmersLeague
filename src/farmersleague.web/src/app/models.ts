@@ -106,6 +106,14 @@ export type LivePlayer = {
   teamName: string | null;
   categories: PlayerStatCategory[];
   substitution?: LivePlayerSubstitution | null;
+  fantasySubstitutionStatus?: 'subbedIn' | 'subbedOut' | null;
+  pointsOverride?: number | null;
+};
+
+export type LiveFantasySubstitutionRequest = {
+  passkey: string;
+  playerInName: string;
+  playerOutName: string;
 };
 
 export type LivePlayerSubstitution = {

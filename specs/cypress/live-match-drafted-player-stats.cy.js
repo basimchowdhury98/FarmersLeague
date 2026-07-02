@@ -264,6 +264,97 @@ describe('Live match drafted player stats', () => {
     });
   });
 
+  it('substitutes an undrafted live player into my squad for one of my drafted players', () => {
+    completeDraft();
+    arrangeOngoingMatch();
+
+    const incomingPlayer = homeStarters[3];
+    const replacedPlayer = homeStarters[0];
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', incomingPlayer).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button').click();
+    });
+
+    cy.testGet('live-substitution-replacement-dialog').within(() => {
+      cy.contains('[data-test="live-substitution-replacement-player"]', replacedPlayer).click();
+      cy.testGet('live-substitution-confirm-button').click();
+    });
+
+    cy.testGet('live-squad').filter('[data-current-user="true"]').within(() => {
+      cy.contains('[data-test="live-tracker-player"]', incomingPlayer).should('be.visible');
+      cy.testGet('live-fantasy-substitution-divider').should('be.visible');
+      cy.testGet('live-fantasy-substitution-label').should('contain.text', 'Subbed off');
+      cy.testGet('live-fantasy-substitution-status').should('not.exist');
+      cy.contains('[data-test="live-tracker-player"]', replacedPlayer)
+        .should('be.visible')
+        .and('not.contain.text', 'Subbed out');
+    });
+
+    cy.contains('[data-test="live-tracker-player"]', incomingPlayer).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-player-dialog-fantasy-substitution-status')
+        .should('be.visible')
+        .and('contain.text', 'Subbed in');
+    });
+  });
+
+  it('visibly marks the selected live substitution replacement player', () => {
+    completeDraft();
+    arrangeOngoingMatch();
+
+    const incomingPlayer = homeStarters[3];
+    const replacedPlayer = homeStarters[0];
+
+    cy.visit(livePath(alicePasskey));
+
+    cy.contains('[data-test="live-lineup-player"]', incomingPlayer).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button').click();
+    });
+
+    cy.testGet('live-substitution-replacement-dialog').within(() => {
+      cy.contains('[data-test="live-substitution-replacement-player"]', replacedPlayer)
+        .click()
+        .should('have.attr', 'aria-pressed', 'true');
+    });
+  });
+
+  it('substitutes after the live tracker starts an upcoming match', () => {
+    completeDraft();
+    cy.arrangeUpcomingMatch(match.id);
+
+    const incomingPlayer = homeStarters[3];
+    const replacedPlayer = homeStarters[0];
+
+    cy.visit(livePath(alicePasskey));
+    cy.testGet('live-match-page').should('be.visible');
+
+    setScraperLiveMatchStatus({ started: true, finished: false });
+
+    cy.contains('[data-test="live-lineup-player"]', incomingPlayer).find('button').click();
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button', { timeout: 35000 }).click();
+    });
+
+    cy.testGet('live-substitution-replacement-dialog').within(() => {
+      cy.contains('[data-test="live-substitution-replacement-player"]', replacedPlayer).click();
+      cy.testGet('live-substitution-confirm-button').click();
+    });
+
+    cy.testGet('live-squad').filter('[data-current-user="true"]').within(() => {
+      cy.contains('[data-test="live-tracker-player"]', incomingPlayer).should('be.visible');
+      cy.testGet('live-fantasy-substitution-divider').should('be.visible');
+      cy.testGet('live-fantasy-substitution-label').should('contain.text', 'Subbed off');
+      cy.testGet('live-fantasy-substitution-status').should('not.exist');
+      cy.contains('[data-test="live-tracker-player"]', replacedPlayer)
+        .should('be.visible')
+        .and('not.contain.text', 'Subbed out');
+    });
+  });
+
   it('enables substitution actions from a live tracker started update', () => {
     completeDraft();
     cy.arrangeUpcomingMatch(match.id);
@@ -279,6 +370,24 @@ describe('Live match drafted player stats', () => {
         .should('be.visible')
         .and('be.enabled')
         .and('contain.text', 'Substitute into my squad');
+      cy.testGet('live-substitution-unavailable-reason').should('not.exist');
+    });
+  });
+
+  it('removes substitution actions from a live tracker finished update', () => {
+    completeDraft();
+    arrangeOngoingMatch();
+
+    cy.visit(livePath(alicePasskey));
+    cy.testGet('live-match-page').should('be.visible');
+
+    cy.contains('[data-test="live-lineup-player"]', homeStarters[3]).find('button').click();
+    cy.testGet('live-player-dialog').should('be.visible');
+
+    setScraperLiveMatchStatus({ started: true, finished: true, score: '2 - 1' });
+
+    cy.testGet('live-player-dialog').within(() => {
+      cy.testGet('live-substitution-button', { timeout: 35000 }).should('not.exist');
       cy.testGet('live-substitution-unavailable-reason').should('not.exist');
     });
   });

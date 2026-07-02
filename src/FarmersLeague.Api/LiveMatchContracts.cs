@@ -6,7 +6,7 @@ record LiveMatchHeartbeatMessage(string Type);
 
 record LiveSquadResponse(string UserName, IReadOnlyList<LivePlayerResponse> Players);
 
-record LivePlayerResponse(string Name, string? TeamName, IReadOnlyList<PlayerStatCategoryResponse> Categories, LivePlayerSubstitutionResponse? Substitution = null);
+record LivePlayerResponse(string Name, string? TeamName, IReadOnlyList<PlayerStatCategoryResponse> Categories, LivePlayerSubstitutionResponse? Substitution = null, string? FantasySubstitutionStatus = null, int? PointsOverride = null);
 
 record LivePlayerSubstitutionResponse(int Minute, string PlayerOnName, bool InjuredPlayerOut);
 
@@ -21,7 +21,24 @@ record CompletedLiveMatchResult(
     IReadOnlyList<PlayerStatsPlayerResponse> DraftedPlayerStats,
     IReadOnlyList<ArchivedPlayerStatsPlayerResponse> AllPlayerStats,
     IReadOnlyDictionary<string, int> PointsConfig,
+    IReadOnlyList<LiveFantasySubstitution> FantasySubstitutions,
     DateTimeOffset FinalizedAt);
+
+record LiveFantasyMatchState(IReadOnlyList<LiveFantasySubstitution> Substitutions);
+
+record LiveFantasySubstitution(
+    string UserName,
+    string PlayerOutName,
+    string PlayerInName,
+    DateTimeOffset CreatedAt,
+    int PlayerOutPointsAtSubstitution,
+    int PlayerInPointsAtSubstitution,
+    IReadOnlyList<PlayerStatCategoryResponse> PlayerOutStatsAtSubstitution,
+    IReadOnlyList<PlayerStatCategoryResponse> PlayerInStatsAtSubstitution);
+
+record LiveFantasySubstitutionRequest(string Passkey, string PlayerInName, string PlayerOutName);
+
+record LiveFantasySquadEntry(string UserName, string PlayerName, string? FantasySubstitutionStatus, int? PointsOverride, int PointsBaseline = 0);
 
 record ArchivedPlayerStatsPlayerResponse(
     string Id,

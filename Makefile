@@ -5,8 +5,23 @@ SHELL := /bin/bash
 CYPRESS_SPECS := *.cy.js
 
 mock:
+	set -e; \
 	trap 'docker compose down' EXIT; \
-	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=pulsing LIVE_MATCH_REFRESH_INTERVAL_SECONDS=2 docker compose up --build
+	FOTMOB_BASE_URL=http://mock-fotmob SEED_TEST_USERS=true LIVE_MATCH_REFRESH_MODE=pulsing LIVE_MATCH_REFRESH_INTERVAL_SECONDS=2 docker compose up --build -d; \
+	until curl -fsS http://localhost:8080/api/hello >/dev/null 2>&1; do sleep 1; done; \
+	open_browser_window() { \
+		url="$$1"; \
+		if command -v google-chrome >/dev/null 2>&1; then google-chrome --new-window "$$url" >/dev/null 2>&1 & \
+		elif command -v chromium >/dev/null 2>&1; then chromium --new-window "$$url" >/dev/null 2>&1 & \
+		elif command -v chromium-browser >/dev/null 2>&1; then chromium-browser --new-window "$$url" >/dev/null 2>&1 & \
+		elif command -v firefox >/dev/null 2>&1; then firefox --new-window "$$url" >/dev/null 2>&1 & \
+		else xdg-open "$$url" >/dev/null 2>&1 & \
+		fi; \
+	}; \
+	open_browser_window http://localhost:8080/alice-1111-1111-1111; \
+	open_browser_window http://localhost:8080/bob-2222-2222-2222; \
+	open_browser_window http://localhost:8081; \
+	docker compose logs -f
 
 run:
 	trap 'docker compose down' EXIT; \

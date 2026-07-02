@@ -367,7 +367,7 @@ app.MapPost("/api/drafts/{matchId:int}/picks", async (int matchId, DraftPickRequ
     var updatedResponse = await SaveAndBroadcastDraft(matchId, match, updatedDraft, cache, liveDraftConnections, cancellationToken);
     if (DraftRules.IsComplete(updatedDraft))
     {
-        StartLiveMatchTracker(matchId, ToLiveMatchResponse(updatedResponse.Match, updatedDraft, null), scraper, cache, liveMatchTrackers, logger);
+        StartLiveMatchTracker(matchId, ToLiveMatchResponse(updatedResponse.Match, updatedDraft, new LiveFantasyMatchState([]), null), scraper, cache, liveMatchTrackers, logger);
     }
 
     return Results.Ok(updatedResponse);
@@ -416,6 +416,75 @@ app.MapGet("/api/matches/{matchId:int}/live/updates", async (int matchId, HttpCo
     return Results.Empty;
 });
 
+app.MapPost("/api/matches/{matchId:int}/live/substitutions", async (int matchId, LiveFantasySubstitutionRequest request, IWorldCupScraper scraper, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, ILogger<Program> logger, CancellationToken cancellationToken) =>
+{
+    var draftContext = await GetDraftContext(request.Passkey, matchId, scraper, cache, logger, false, cancellationToken);
+    if (draftContext.Error is not null)
+    {
+        return draftContext.Error;
+    }
+
+    var draft = await GetDraft(matchId, cache, cancellationToken);
+    if (draft is null || !DraftRules.IsComplete(draft))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Match has not started yet"));
+    }
+
+    var match = liveMatchTrackers.TryGetCurrent(matchId, out var currentLiveMatch) && currentLiveMatch is not null
+        ? currentLiveMatch.Match
+        : draftContext.Match!;
+    var latestStats = await GetPlayerStats(matchId, [request.PlayerOutName, request.PlayerInName], scraper, cancellationToken)
+        ?? new PlayerStatsResponse(matchId.ToString(), [], [request.PlayerOutName, request.PlayerInName], []);
+    match = latestStats.Status is null ? match : WithPlayerStatsMatchStatus(match, latestStats.Status);
+    if (!match.HasStarted || match.HasFinished)
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Substitutions are only available during live matches"));
+    }
+
+    var fantasyState = await GetLiveFantasyMatchState(matchId, cache, cancellationToken);
+    var effectivePicks = EffectiveLivePicks(draft.Picks, fantasyState.Substitutions);
+    if (!effectivePicks.Any(pick => string.Equals(pick.UserName, draftContext.UserName, StringComparison.Ordinal) && string.Equals(pick.PlayerName, request.PlayerOutName, StringComparison.Ordinal)))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Choose one of your active players to replace"));
+    }
+
+    if (effectivePicks.Any(pick => string.Equals(pick.PlayerName, request.PlayerInName, StringComparison.Ordinal)))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Player is already drafted"));
+    }
+
+    if (!HasPlayerInMatch(match, request.PlayerInName))
+    {
+        return Results.BadRequest(new DraftPickErrorResponse("Player is not available in this match"));
+    }
+
+    var statsByPlayerName = latestStats.Players.ToDictionary(player => player.Name, StringComparer.Ordinal);
+    var pointMultipliers = LiveScoringConfig.PointMultipliers;
+    var playerOutStats = statsByPlayerName.TryGetValue(request.PlayerOutName, out var outStats)
+        ? WithStatPoints(outStats.Categories, pointMultipliers)
+        : [];
+    var playerInStats = statsByPlayerName.TryGetValue(request.PlayerInName, out var inStats)
+        ? WithStatPoints(inStats.Categories, pointMultipliers)
+        : [];
+    var substitution = new LiveFantasySubstitution(
+        draftContext.UserName!,
+        request.PlayerOutName,
+        request.PlayerInName,
+        DateTimeOffset.UtcNow,
+        outStats is null ? 0 : LivePlayerPoints(outStats, pointMultipliers),
+        inStats is null ? 0 : LivePlayerPoints(inStats, pointMultipliers),
+        playerOutStats,
+        playerInStats);
+
+    fantasyState = fantasyState with { Substitutions = fantasyState.Substitutions.Concat([substitution]).ToArray() };
+    await SaveLiveFantasyMatchState(matchId, fantasyState, cache, cancellationToken);
+
+    var response = await GetTrackableLiveMatch(matchId, scraper, cache, logger, cancellationToken);
+    return response is null
+        ? Results.BadRequest(new DraftPickErrorResponse("Live match unavailable"))
+        : Results.Ok(response);
+});
+
 app.MapGet("/api/matches", async (IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken) =>
 {
     var matches = await HomeMatchesCache.GetOrHydrate(cache, scraper, cancellationToken);
@@ -462,6 +531,8 @@ static IResult? RequireAdmin(DraftContextResult draftContext) =>
     draftContext.IsAdmin ? null : Results.StatusCode(StatusCodes.Status403Forbidden);
 
 static string CompletedLiveMatchCacheKey(int matchId) => $"live-matches:{matchId}:completed";
+
+static string LiveFantasyMatchStateCacheKey(int matchId) => $"live-matches:{matchId}:state";
 
 static string ConfirmedLineupsCacheKey(int matchId) => $"matches:{matchId}:lineups";
 
@@ -540,6 +611,18 @@ static async Task<CompletedLiveMatchResult?> GetCompletedLiveMatch(int matchId, 
 static Task SaveCompletedLiveMatch(int matchId, CompletedLiveMatchResult completed, IDistributedCache cache, CancellationToken cancellationToken) =>
     cache.SetStringAsync(CompletedLiveMatchCacheKey(matchId), JsonSerializer.Serialize(completed, AppJson.Options), cancellationToken);
 
+static async Task<LiveFantasyMatchState> GetLiveFantasyMatchState(int matchId, IDistributedCache cache, CancellationToken cancellationToken)
+{
+    var cachedState = await cache.GetStringAsync(LiveFantasyMatchStateCacheKey(matchId), cancellationToken);
+
+    return cachedState is null
+        ? new LiveFantasyMatchState([])
+        : JsonSerializer.Deserialize<LiveFantasyMatchState>(cachedState, AppJson.Options) ?? new LiveFantasyMatchState([]);
+}
+
+static Task SaveLiveFantasyMatchState(int matchId, LiveFantasyMatchState state, IDistributedCache cache, CancellationToken cancellationToken) =>
+    cache.SetStringAsync(LiveFantasyMatchStateCacheKey(matchId), JsonSerializer.Serialize(state, AppJson.Options), cancellationToken);
+
 static async Task<LiveMatchResult> GetInitialLiveMatch(string passkey, int matchId, IWorldCupScraper scraper, IDistributedCache cache, LiveMatchTrackers liveMatchTrackers, ILogger logger, CancellationToken cancellationToken)
 {
     var draftContext = await GetDraftContext(passkey, matchId, scraper, cache, logger, false, cancellationToken);
@@ -560,13 +643,14 @@ static async Task<LiveMatchResult> GetInitialLiveMatch(string passkey, int match
     }
 
     var match = draftContext.Match!;
-    var completedLiveMatch = await GetCompletedOrFinalizedLiveMatchResponse(match, draft, scraper, cache, cancellationToken);
+    var fantasyState = await GetLiveFantasyMatchState(matchId, cache, cancellationToken);
+    var completedLiveMatch = await GetCompletedOrFinalizedLiveMatchResponse(match, draft, fantasyState, scraper, cache, cancellationToken);
     if (completedLiveMatch is not null)
     {
         return new LiveMatchResult(completedLiveMatch, null);
     }
 
-    var initialState = ToLiveMatchResponse(match, draft, null);
+    var initialState = ToLiveMatchResponse(match, draft, fantasyState, null);
     StartLiveMatchTracker(matchId, initialState, scraper, cache, liveMatchTrackers, logger);
 
     return new LiveMatchResult(initialState, null);
@@ -595,13 +679,19 @@ static async Task<LiveMatchResponse?> GetTrackableLiveMatch(int matchId, IWorldC
         return null;
     }
 
-    var completedLiveMatch = await GetCompletedOrFinalizedLiveMatchResponse(match, draft, scraper, cache, cancellationToken);
+    var fantasyState = await GetLiveFantasyMatchState(matchId, cache, cancellationToken);
+    var completedLiveMatch = await GetCompletedOrFinalizedLiveMatchResponse(match, draft, fantasyState, scraper, cache, cancellationToken);
     if (completedLiveMatch is not null)
     {
         return completedLiveMatch;
     }
 
-    var stats = await GetPlayerStats(matchId, draft.Picks.Select(pick => pick.PlayerName).ToArray(), scraper, cancellationToken);
+    var requestedPlayers = draft.Picks
+        .Select(pick => pick.PlayerName)
+        .Concat(fantasyState.Substitutions.Select(substitution => substitution.PlayerInName))
+        .Distinct(StringComparer.Ordinal)
+        .ToArray();
+    var stats = await GetPlayerStats(matchId, requestedPlayers, scraper, cancellationToken);
     if (IsFullTime(stats?.Status))
     {
         var finalMatch = match with
@@ -610,15 +700,15 @@ static async Task<LiveMatchResponse?> GetTrackableLiveMatch(int matchId, IWorldC
             HasFinished = true,
             Score = stats?.Status?.Score ?? match.Score
         };
-        var completed = await FinalizeCompletedLiveMatch(finalMatch, draft, scraper, cache, cancellationToken);
+        var completed = await FinalizeCompletedLiveMatch(finalMatch, draft, fantasyState, scraper, cache, cancellationToken);
 
         return ToCompletedLiveMatchResponse(finalMatch, draft, completed);
     }
 
-    return ToLiveMatchResponse(match, draft, stats);
+    return ToLiveMatchResponse(match, draft, fantasyState, stats);
 }
 
-static async Task<LiveMatchResponse?> GetCompletedOrFinalizedLiveMatchResponse(MatchResponse match, DraftState draft, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
+static async Task<LiveMatchResponse?> GetCompletedOrFinalizedLiveMatchResponse(MatchResponse match, DraftState draft, LiveFantasyMatchState fantasyState, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
     var completed = await GetCompletedLiveMatch(match.Id, cache, cancellationToken);
     if (completed is not null)
@@ -631,12 +721,12 @@ static async Task<LiveMatchResponse?> GetCompletedOrFinalizedLiveMatchResponse(M
         return null;
     }
 
-    completed = await FinalizeCompletedLiveMatch(match, draft, scraper, cache, cancellationToken);
+    completed = await FinalizeCompletedLiveMatch(match, draft, fantasyState, scraper, cache, cancellationToken);
 
     return ToCompletedLiveMatchResponse(match, draft, completed);
 }
 
-static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResponse match, DraftState draft, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
+static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResponse match, DraftState draft, LiveFantasyMatchState fantasyState, IWorldCupScraper scraper, IDistributedCache cache, CancellationToken cancellationToken)
 {
     var existing = await GetCompletedLiveMatch(match.Id, cache, cancellationToken);
     if (existing is not null)
@@ -651,7 +741,8 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
     var allStats = await GetPlayerStats(match.Id, allPlayerNames, scraper, cancellationToken)
         ?? new PlayerStatsResponse(match.Id.ToString(), [], allPlayerNames, []);
     var pointsConfig = LiveScoringConfig.PointMultipliers.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
-    var draftedPlayerNames = draft.Picks.Select(pick => pick.PlayerName).ToHashSet(StringComparer.Ordinal);
+    var effectivePicks = EffectiveLivePicks(draft.Picks, fantasyState.Substitutions);
+    var draftedPlayerNames = effectivePicks.Select(pick => pick.PlayerName).ToHashSet(StringComparer.Ordinal);
     var draftedByPlayerName = draft.Picks
         .GroupBy(pick => pick.PlayerName, StringComparer.Ordinal)
         .ToDictionary(group => group.Key, group => group.First().UserName, StringComparer.Ordinal);
@@ -659,11 +750,11 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
         .Where(player => draftedPlayerNames.Contains(player.Name))
         .ToArray();
     var statsByPlayerName = draftedStats.ToDictionary(player => player.Name, StringComparer.Ordinal);
-    var squads = draft.Picks
+    var squads = LiveSquadScoringEntries(draft.Picks, fantasyState.Substitutions)
         .GroupBy(pick => pick.UserName, StringComparer.Ordinal)
         .Select(group => new LiveSquadFinalScoreResponse(
             group.Key,
-            group.Sum(pick => statsByPlayerName.TryGetValue(pick.PlayerName, out var player) ? LivePlayerPoints(player, pointsConfig) : 0)))
+            group.Sum(pick => LiveFantasyPlayerPoints(pick, statsByPlayerName, pointsConfig))))
         .ToArray();
     var winningScore = squads.Length == 0 ? 0 : squads.Max(squad => squad.TotalPoints);
     var winners = squads
@@ -677,6 +768,7 @@ static async Task<CompletedLiveMatchResult> FinalizeCompletedLiveMatch(MatchResp
         draftedStats,
         allStats.Players.Select(player => ToArchivedPlayerStats(player, draftedByPlayerName, pointsConfig)).ToArray(),
         pointsConfig,
+        fantasyState.Substitutions,
         DateTimeOffset.UtcNow);
 
     await SaveCompletedLiveMatch(match.Id, completed, cache, cancellationToken);
@@ -709,7 +801,8 @@ static async Task FinalizeCompletedLiveMatches(IWorldCupScraper scraper, IDistri
         {
             var cachedLineups = await GetStartedDraftLineups(cachedMatch.Id, draft.Status, scraper, cache, logger, cancellationToken);
             var match = ToMatchResponse(cachedMatch) with { Lineups = cachedLineups };
-            await FinalizeCompletedLiveMatch(match, draft, scraper, cache, cancellationToken);
+            var fantasyState = await GetLiveFantasyMatchState(cachedMatch.Id, cache, cancellationToken);
+            await FinalizeCompletedLiveMatch(match, draft, fantasyState, scraper, cache, cancellationToken);
             logger.LogInformation("Completed live match {MatchId} finalized by background job", cachedMatch.Id);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1049,9 +1142,9 @@ static PlayerStatResponse ToPlayerStatResponse(WorldCupPlayerStatResponse stat) 
     CalculateLiveStatPoints(stat.Value, stat.Key, LiveScoringConfig.PointMultipliers));
 
 static LiveMatchResponse ToCompletedLiveMatchResponse(MatchResponse match, DraftState draft, CompletedLiveMatchResult completed) =>
-    ToLiveMatchResponse(match, draft, new PlayerStatsResponse(match.Id.ToString(), completed.DraftedPlayerStats, [], []), completed);
+    ToLiveMatchResponse(match, draft, new LiveFantasyMatchState(completed.FantasySubstitutions ?? []), new PlayerStatsResponse(match.Id.ToString(), completed.DraftedPlayerStats, [], []), completed);
 
-static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, PlayerStatsResponse? stats, CompletedLiveMatchResult? completed = null)
+static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState draft, LiveFantasyMatchState fantasyState, PlayerStatsResponse? stats, CompletedLiveMatchResult? completed = null)
 {
     match = stats?.Status is null ? match : WithPlayerStatsMatchStatus(match, stats.Status);
     match = stats?.Substitutions.Count > 0 ? WithSubstitutions(match, stats.Substitutions) : match;
@@ -1064,11 +1157,12 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
         .ToDictionary(group => group.Key, group => group.First().TeamName, StringComparer.Ordinal);
     var pointMultipliers = completed?.PointsConfig ?? LiveScoringConfig.PointMultipliers;
 
-    var squads = draft.Picks
+    var scoringEntries = LiveSquadScoringEntries(draft.Picks, fantasyState.Substitutions);
+    var squads = scoringEntries
         .GroupBy(pick => pick.UserName, StringComparer.Ordinal)
         .Select(group => new LiveSquadResponse(
             group.Key,
-            group.Select(pick => ToLivePlayerResponse(pick.PlayerName, playersByName, substitutionsByPlayerName, teamsByPlayerName, pointMultipliers)).ToArray()))
+            group.Select(pick => ToLivePlayerResponse(pick, playersByName, substitutionsByPlayerName, teamsByPlayerName, pointMultipliers)).ToArray()))
         .ToArray();
 
     var finalResult = completed is null
@@ -1077,6 +1171,43 @@ static LiveMatchResponse ToLiveMatchResponse(MatchResponse match, DraftState dra
 
     return new LiveMatchResponse(match, squads, finalResult);
 }
+
+static IReadOnlyList<LiveFantasySquadEntry> LiveSquadScoringEntries(IReadOnlyList<DraftPick> picks, IReadOnlyList<LiveFantasySubstitution> substitutions)
+{
+    var entries = picks.Select(pick => new LiveFantasySquadEntry(pick.UserName, pick.PlayerName, null, null)).ToList();
+
+    foreach (var substitution in substitutions.OrderBy(substitution => substitution.CreatedAt))
+    {
+        var activeIndex = entries.FindIndex(entry =>
+            string.Equals(entry.UserName, substitution.UserName, StringComparison.Ordinal)
+            && string.Equals(entry.PlayerName, substitution.PlayerOutName, StringComparison.Ordinal)
+            && entry.FantasySubstitutionStatus is null);
+        if (activeIndex < 0)
+        {
+            continue;
+        }
+
+        entries[activeIndex] = entries[activeIndex] with
+        {
+            FantasySubstitutionStatus = "subbedOut",
+            PointsOverride = substitution.PlayerOutPointsAtSubstitution
+        };
+        entries.Add(new LiveFantasySquadEntry(
+            substitution.UserName,
+            substitution.PlayerInName,
+            "subbedIn",
+            null,
+            substitution.PlayerInPointsAtSubstitution));
+    }
+
+    return entries;
+}
+
+static IReadOnlyList<DraftPick> EffectiveLivePicks(IReadOnlyList<DraftPick> picks, IReadOnlyList<LiveFantasySubstitution> substitutions) =>
+    LiveSquadScoringEntries(picks, substitutions)
+        .Where(entry => !string.Equals(entry.FantasySubstitutionStatus, "subbedOut", StringComparison.Ordinal))
+        .Select(entry => new DraftPick(entry.UserName, entry.PlayerName))
+        .ToArray();
 
 static MatchResponse WithPlayerStatsMatchStatus(MatchResponse match, PlayerStatsMatchStatusResponse status) => match with
 {
@@ -1116,22 +1247,47 @@ static IEnumerable<(string Name, string TeamName)> AllLineupPlayers(MatchRespons
     match.Lineups.SelectMany(lineup => lineup.Starters.Concat(lineup.Bench).Select(player => (player.Name, lineup.TeamName)));
 
 static LivePlayerResponse ToLivePlayerResponse(
-    string playerName,
+    LiveFantasySquadEntry entry,
     IReadOnlyDictionary<string, PlayerStatsPlayerResponse> playersByName,
     IReadOnlyDictionary<string, MatchSubstitutionResponse> substitutionsByPlayerName,
     IReadOnlyDictionary<string, string> teamsByPlayerName,
     IReadOnlyDictionary<string, int> pointMultipliers)
 {
+    var playerName = entry.PlayerName;
     var substitution = substitutionsByPlayerName.TryGetValue(playerName, out var playerSubstitution)
         ? new LivePlayerSubstitutionResponse(playerSubstitution.Minute, playerSubstitution.PlayerOnName, playerSubstitution.InjuredPlayerOut)
         : null;
 
     if (playersByName.TryGetValue(playerName, out var statsPlayer))
     {
-        return new LivePlayerResponse(playerName, statsPlayer.TeamName, WithStatPoints(statsPlayer.Categories, pointMultipliers), substitution);
+        var pointsOverride = entry.PointsOverride;
+        if (pointsOverride is null && string.Equals(entry.FantasySubstitutionStatus, "subbedIn", StringComparison.Ordinal))
+        {
+            pointsOverride = Math.Max(0, LivePlayerPoints(statsPlayer, pointMultipliers) - entry.PointsBaseline);
+        }
+
+        return new LivePlayerResponse(playerName, statsPlayer.TeamName, WithStatPoints(statsPlayer.Categories, pointMultipliers), substitution, entry.FantasySubstitutionStatus, pointsOverride);
     }
 
-    return new LivePlayerResponse(playerName, teamsByPlayerName.GetValueOrDefault(playerName), [], substitution);
+    return new LivePlayerResponse(playerName, teamsByPlayerName.GetValueOrDefault(playerName), [], substitution, entry.FantasySubstitutionStatus, entry.PointsOverride);
+}
+
+static int LiveFantasyPlayerPoints(LiveFantasySquadEntry entry, IReadOnlyDictionary<string, PlayerStatsPlayerResponse> statsByPlayerName, IReadOnlyDictionary<string, int> pointMultipliers)
+{
+    if (entry.PointsOverride is not null)
+    {
+        return entry.PointsOverride.Value;
+    }
+
+    if (!statsByPlayerName.TryGetValue(entry.PlayerName, out var player))
+    {
+        return 0;
+    }
+
+    var points = LivePlayerPoints(player, pointMultipliers);
+    return string.Equals(entry.FantasySubstitutionStatus, "subbedIn", StringComparison.Ordinal)
+        ? Math.Max(0, points - entry.PointsBaseline)
+        : points;
 }
 
 static IReadOnlyList<PlayerStatCategoryResponse> WithStatPoints(IReadOnlyList<PlayerStatCategoryResponse> categories, IReadOnlyDictionary<string, int> pointMultipliers) =>

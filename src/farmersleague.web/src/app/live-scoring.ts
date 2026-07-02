@@ -5,6 +5,10 @@ export function livePlayerPoints(player: LivePlayer | null) {
     return 0;
   }
 
+  if (player.pointsOverride !== null && player.pointsOverride !== undefined) {
+    return player.pointsOverride;
+  }
+
   return uniqueLivePlayerStats(player)
     .reduce((total, stat) => total + liveStatPoints(stat), 0);
 }

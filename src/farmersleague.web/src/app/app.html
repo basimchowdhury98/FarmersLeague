@@ -213,7 +213,34 @@
                   <strong [attr.data-test]="isLiveMatchFinal() ? 'live-squad-final-points' : 'live-squad-points'">{{ liveSquadFinalPoints(squad) }} pts</strong>
                 </div>
                 <ol class="live-tracker-players">
-                  @for (player of squad.players; track player.name) {
+                  @for (player of activeLiveSquadPlayers(squad); track player.name) {
+                    <li data-test="live-tracker-player">
+                      <button type="button" data-test="live-tracker-player-card" (click)="openLivePlayerStats(player.name)">
+                        <span class="live-player-name-wrap" style="display:inline-flex;align-items:center;gap:.45rem;">
+                          <span>{{ player.name }}</span>
+                          @if (livePlayerSubstitutionLabel(player); as substitutionLabel) {
+                            <small class="substitution-badge" data-test="live-player-subbed-off" [attr.aria-label]="substitutionLabel" [attr.title]="livePlayerSubstitutionText(player)" style="display:inline-grid;place-items:center;width:1.25rem;height:1.25rem;border-radius:999px;background:#ffe0a1;color:#07140f;font-weight:950;">↔</small>
+                          }
+                        </span>
+                        <strong class="points-value" data-test="live-player-points">
+                          {{ livePlayerPoints(player) }} pts
+                          @for (change of livePointChangesForPlayer(player.name); track change.id) {
+                            <span
+                              class="point-change"
+                              data-test="live-point-change"
+                              [class.down]="change.delta < 0"
+                              aria-live="polite"
+                            >{{ livePointChangeText(change.delta) }}</span>
+                          }
+                        </strong>
+                      </button>
+                    </li>
+                  }
+                  @if (subbedOutLiveSquadPlayers(squad).length > 0) {
+                    <li data-test="live-fantasy-substitution-divider" aria-hidden="true" style="height:1px;margin:.35rem 0;background:rgb(247 241 223 / 26%);"></li>
+                    <li data-test="live-fantasy-substitution-label" style="color:rgb(247 241 223 / 68%);font-size:.75rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase;">Subbed off</li>
+                  }
+                  @for (player of subbedOutLiveSquadPlayers(squad); track player.name) {
                     <li data-test="live-tracker-player">
                       <button type="button" data-test="live-tracker-player-card" (click)="openLivePlayerStats(player.name)">
                         <span class="live-player-name-wrap" style="display:inline-flex;align-items:center;gap:.45rem;">
@@ -305,6 +332,9 @@
                   @if (livePlayerSubstitutionText(selectedPlayer); as substitutionText) {
                     <p class="live-player-dialog-substitution" data-test="live-player-dialog-subbed-off">{{ substitutionText }}</p>
                   }
+                  @if (liveFantasySubstitutionText(selectedPlayer); as fantasySubstitutionText) {
+                    <p class="live-player-dialog-substitution" data-test="live-player-dialog-fantasy-substitution-status">{{ fantasySubstitutionText }}</p>
+                  }
                 </div>
                   <strong class="points-value" data-test="live-player-dialog-points">
                     {{ livePlayerPoints(selectedPlayer) }} pts
@@ -352,6 +382,7 @@
                       type="button"
                       data-test="live-substitution-button"
                       [disabled]="!isLiveSubstitutionAvailable()"
+                      (click)="openLiveSubstitutionReplacementDialog(selectedPlayer)"
                     >Substitute into my squad</button>
                     @if (!isLiveSubstitutionAvailable()) {
                       <p data-test="live-substitution-unavailable-reason">Available when the match starts</p>
@@ -360,6 +391,46 @@
                 }
 
                 <button type="button" class="live-player-dialog-close" data-test="live-player-dialog-close" (click)="closeLivePlayerStats()">Close</button>
+              </div>
+            </section>
+          }
+
+          @if (liveSubstitutionPlayerIn(); as playerIn) {
+            <section class="live-player-dialog" data-test="live-substitution-replacement-dialog" role="dialog" aria-modal="true" aria-labelledby="live-substitution-replacement-heading" (click)="closeLiveSubstitutionReplacementDialog()">
+              <div class="live-player-dialog-panel" (click)="$event.stopPropagation()">
+                <div class="live-player-dialog-heading">
+                  <div>
+                    <p class="eyebrow">Choose replacement</p>
+                    <h2 id="live-substitution-replacement-heading">Substitute {{ playerIn.name }} into my squad</h2>
+                  </div>
+                </div>
+
+                <div class="draft-lobby">
+                  @for (player of liveSubstitutionReplacementPlayers(); track player.name) {
+                    <button
+                      type="button"
+                      data-test="live-substitution-replacement-player"
+                      [class.selected]="liveSubstitutionPlayerOut()?.name === player.name"
+                      [attr.aria-pressed]="liveSubstitutionPlayerOut()?.name === player.name ? 'true' : 'false'"
+                      [style.outline]="liveSubstitutionPlayerOut()?.name === player.name ? '3px solid #b8e986' : null"
+                      (click)="selectLiveSubstitutionReplacement(player)"
+                    >{{ player.name }} · {{ livePlayerPoints(player) }} pts</button>
+                  }
+                </div>
+
+                @if (liveSubstitutionError()) {
+                  <p class="draft-error" data-test="live-substitution-error">{{ liveSubstitutionError() }}</p>
+                }
+
+                <div class="draft-lobby">
+                  <button
+                    type="button"
+                    data-test="live-substitution-confirm-button"
+                    [disabled]="!liveSubstitutionPlayerOut() || isSubmittingLiveSubstitution()"
+                    (click)="confirmLiveSubstitution()"
+                  >Confirm substitution</button>
+                  <button type="button" data-test="live-substitution-cancel-button" (click)="closeLiveSubstitutionReplacementDialog()">Cancel</button>
+                </div>
               </div>
             </section>
           }

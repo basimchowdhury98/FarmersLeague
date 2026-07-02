@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Component, computed, signal } from '@angular/core';
 import { draftedHighlightDurationMs, draftPickFlightDurationMs, lineupUnavailableMessage, liveMatchUnavailableMessage, maxPicksPerUser, startingPlayerCount } from './draft.constants';
 import { livePlayerPoints, liveStatPoints, scoringLivePlayerCategories } from './live-scoring';
-import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveMatchLiveMessage, LiveMatchResponse, LivePlayer, LiveScoringRuleResponse, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, ScoringRulesTab, StarterResponse } from './models';
+import { AccessResponse, DraftLiveMessage, DraftOrderMode, DraftOrderReveal, DraftOrderRevealMessage, DraftPick, DraftPickErrorResponse, DraftPickFlight, DraftResponse, HelloResponse, LineupResponse, LiveFantasySubstitutionRequest, LiveMatchLiveMessage, LiveMatchResponse, LivePlayer, LiveScoringRuleResponse, LiveSquad, MatchFeedTab, MatchResponse, PlayerStat, ScoringRulesTab, StarterResponse } from './models';
 
 const liveMatchStartedError = 'Live match cannot be created since the actual match has started';
 const defaultMatchFeedTab: MatchFeedTab = 'today';
@@ -53,6 +53,10 @@ export class App {
   protected readonly liveFeedPulseActive = signal(false);
   protected readonly liveMatchShareStatus = signal('');
   protected readonly selectedLivePlayer = signal<LivePlayer | null>(null);
+  protected readonly liveSubstitutionPlayerIn = signal<LivePlayer | null>(null);
+  protected readonly liveSubstitutionPlayerOut = signal<LivePlayer | null>(null);
+  protected readonly liveSubstitutionError = signal('');
+  protected readonly isSubmittingLiveSubstitution = signal(false);
   protected readonly livePointChanges = signal<LivePointChange[]>([]);
   protected readonly draftError = signal('');
   protected readonly draftLiveError = signal('');
@@ -586,6 +590,26 @@ export class App {
     return player.substitution ? 'Subbed off. Open player details for substitution information.' : '';
   }
 
+  protected liveFantasySubstitutionText(player: LivePlayer) {
+    if (player.fantasySubstitutionStatus === 'subbedOut') {
+      return 'Subbed out';
+    }
+
+    if (player.fantasySubstitutionStatus === 'subbedIn') {
+      return 'Subbed in';
+    }
+
+    return '';
+  }
+
+  protected activeLiveSquadPlayers(squad: LiveSquad) {
+    return squad.players.filter((player) => player.fantasySubstitutionStatus !== 'subbedOut');
+  }
+
+  protected subbedOutLiveSquadPlayers(squad: LiveSquad) {
+    return squad.players.filter((player) => player.fantasySubstitutionStatus === 'subbedOut');
+  }
+
   protected starterSubstitutionText(starter: StarterResponse) {
     if (!starter.isSubbedOff) {
       return '';
@@ -720,6 +744,71 @@ export class App {
     return this.livePlayerOwner(player.name) === null && player.substitution === null && match?.hasFinished !== true;
   }
 
+  protected openLiveSubstitutionReplacementDialog(player: LivePlayer) {
+    if (!this.isLiveSubstitutionAvailable()) {
+      return;
+    }
+
+    this.liveSubstitutionPlayerIn.set(player);
+    this.liveSubstitutionPlayerOut.set(null);
+    this.liveSubstitutionError.set('');
+  }
+
+  protected closeLiveSubstitutionReplacementDialog() {
+    if (this.isSubmittingLiveSubstitution()) {
+      return;
+    }
+
+    this.liveSubstitutionPlayerIn.set(null);
+    this.liveSubstitutionPlayerOut.set(null);
+    this.liveSubstitutionError.set('');
+  }
+
+  protected liveSubstitutionReplacementPlayers() {
+    return this.liveMatch()
+      ?.squads
+      .find((squad) => squad.userName === this.userName())
+      ?.players
+      .filter((player) => player.fantasySubstitutionStatus !== 'subbedOut') ?? [];
+  }
+
+  protected selectLiveSubstitutionReplacement(player: LivePlayer) {
+    this.liveSubstitutionPlayerOut.set(player);
+  }
+
+  protected confirmLiveSubstitution() {
+    const match = this.liveMatch()?.match;
+    const playerIn = this.liveSubstitutionPlayerIn();
+    const playerOut = this.liveSubstitutionPlayerOut();
+    if (!match || !playerIn || !playerOut || this.isSubmittingLiveSubstitution()) {
+      return;
+    }
+
+    const request: LiveFantasySubstitutionRequest = {
+      passkey: this.passkey(),
+      playerInName: playerIn.name,
+      playerOutName: playerOut.name
+    };
+
+    this.isSubmittingLiveSubstitution.set(true);
+    this.liveSubstitutionError.set('');
+    this.http.post<LiveMatchResponse>(`/api/matches/${match.id}/live/substitutions`, request).subscribe({
+      next: (response) => {
+        this.applyLiveMatchUpdate(response);
+        this.closeLivePlayerStats();
+        this.liveSubstitutionPlayerIn.set(null);
+        this.liveSubstitutionPlayerOut.set(null);
+        this.liveSubstitutionError.set('');
+        this.isSubmittingLiveSubstitution.set(false);
+      },
+      error: (error) => {
+        const response = error.error as DraftPickErrorResponse | undefined;
+        this.liveSubstitutionError.set(response?.message ?? 'Unable to substitute player');
+        this.isSubmittingLiveSubstitution.set(false);
+      }
+    });
+  }
+
   protected isLiveSubstitutionAvailable() {
     const match = this.liveMatch()?.match;
 
@@ -728,6 +817,9 @@ export class App {
 
   protected closeLivePlayerStats() {
     this.selectedLivePlayer.set(null);
+    this.liveSubstitutionPlayerIn.set(null);
+    this.liveSubstitutionPlayerOut.set(null);
+    this.liveSubstitutionError.set('');
   }
 
   protected playerStatValue(stat: PlayerStat) {

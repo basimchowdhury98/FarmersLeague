@@ -44,6 +44,7 @@ class RedisTestStateStore {
 
       await this.deleteByPattern(client, `${this.redisPrefix}matches:*:lineups`);
       await this.deleteByPattern(client, `${this.redisPrefix}live-matches:*:completed`);
+      await this.deleteByPattern(client, `${this.redisPrefix}live-matches:*:state`);
       return null;
     });
   }
